@@ -1,0 +1,22 @@
+{
+  "name": "geocoleta-pwa-simulacao",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "node scripts/build.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@fontsource/poppins": "5.1.1",
+    "lucide-react": "0.468.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1",
+    "vite": "6.4.5"
+  }
+}
