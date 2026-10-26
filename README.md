@@ -85,7 +85,3 @@ src/session.css      estilos da entrada e identificação da sessão
 src/storage.js       IndexedDB e dados fictícios
 src/styles.css       estilos responsivos
 ```
-
-## Documentação
-
-O histórico acadêmico fica em `docs/DIARIO_PWA.md`. Materiais pessoais de estudo são mantidos fora deste repositório.
