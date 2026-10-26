@@ -69,7 +69,7 @@ export const lots = [
 export const blankForm = lot => ({
   cpfCnpj: '', nome: '', dtNascimento: '', rg: '', orgaoExpedidor: '', mae: '', pai: '',
   sexo: '', escolaridade: '', naturalidade: '', nacionalidade: '', celular: '', telefoneFixo: '',
-  profissao: '', cnh: '', email: '', outroImovel: '', rendaFamiliar: '', estadoCivil: '', regimeBens: '',
+  profissao: '', possuiCnh: '', cnh: '', email: '', outroImovel: '', rendaFamiliar: '', estadoCivil: '', regimeBens: '',
   cpfCnpjConjuge: '', nomeConjuge: '', dtNascimentoConjuge: '', rgConjuge: '', orgaoExpedidorConjuge: '',
   maeConjuge: '', paiConjuge: '', sexoConjuge: '', escolaridadeConjuge: '', naturalidadeConjuge: '',
   nacionalidadeConjuge: '', celularConjuge: '', profissaoConjuge: '', cep: '', bairro: lot.bairro,

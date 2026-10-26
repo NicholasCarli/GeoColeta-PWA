@@ -22,9 +22,9 @@ function SelectField({ form, errors, updateField, name, label, options, onChange
   return <FieldShell name={name} label={label} errors={errors}><select id={name} value={form[name] ?? ''} onChange={event => onChange ? onChange(event.target.value) : updateField(name, event.target.value)} aria-invalid={!!errors[name]} aria-describedby={errors[name] ? `error-${name}` : undefined}><option value="">Selecione uma opção</option>{options.map(([value, text]) => <option value={value} key={value}>{text}</option>)}</select></FieldShell>;
 }
 
-function BooleanField({ form, errors, updateField, name, label }) {
+function BooleanField({ form, errors, updateField, name, label, onChange }) {
   const value = form[name] === true ? 'true' : form[name] === false ? 'false' : '';
-  return <FieldShell name={name} label={label} errors={errors}><select id={name} value={value} onChange={event => updateField(name, event.target.value === '' ? '' : event.target.value === 'true')} aria-invalid={!!errors[name]}><option value="">Selecione uma opção</option><option value="true">Sim</option><option value="false">Não</option></select></FieldShell>;
+  return <FieldShell name={name} label={label} errors={errors}><select id={name} value={value} onChange={event => { const next = event.target.value === '' ? '' : event.target.value === 'true'; onChange ? onChange(next) : updateField(name, next); }} aria-invalid={!!errors[name]}><option value="">Selecione uma opção</option><option value="true">Sim</option><option value="false">Não</option></select></FieldShell>;
 }
 
 export default function CollectionForm({ lot, form, errors, updateField, formTab, setFormTab, onCivilChange, onSubmit, busy, draftTime, attachDocument }) {
@@ -45,16 +45,17 @@ export default function CollectionForm({ lot, form, errors, updateField, formTab
         <TextField form={form} errors={errors} updateField={updateField} name="email" label="E-MAIL *" type="email" maxLength="120" placeholder="nome@exemplo.com" />
         <TextField form={form} errors={errors} updateField={updateField} name="rg" label="RG *" transform={value => documentText(value, 20)} placeholder="Número do RG" />
         <TextField form={form} errors={errors} updateField={updateField} name="orgaoExpedidor" label="ÓRGÃO EXPEDIDOR *" transform={value => documentText(value, 20)} placeholder="Ex.: SSP/MT" />
-        <TextField form={form} errors={errors} updateField={updateField} name="cnh" label="CNH *" transform={value => onlyDigits(value, 11)} inputMode="numeric" placeholder="11 dígitos" />
         <TextField form={form} errors={errors} updateField={updateField} name="mae" label="NOME DA MÃE *" maxLength="120" />
-        <TextField form={form} errors={errors} updateField={updateField} name="pai" label="NOME DO PAI *" maxLength="120" />
+        <TextField form={form} errors={errors} updateField={updateField} name="pai" label="NOME DO PAI (OPCIONAL)" maxLength="120" />
         <SelectField form={form} errors={errors} updateField={updateField} name="escolaridade" label="ESCOLARIDADE *" options={education} />
         <TextField form={form} errors={errors} updateField={updateField} name="naturalidade" label="NATURALIDADE *" maxLength="80" />
         <TextField form={form} errors={errors} updateField={updateField} name="nacionalidade" label="NACIONALIDADE *" maxLength="80" />
         <BooleanField form={form} errors={errors} updateField={updateField} name="outroImovel" label="POSSUI OUTRO IMÓVEL? *" />
-        <TextField form={form} errors={errors} updateField={updateField} name="telefoneFixo" label="TELEFONE FIXO *" transform={maskPhone} inputMode="tel" placeholder="(00) 0000-0000" />
+        <TextField form={form} errors={errors} updateField={updateField} name="telefoneFixo" label="TELEFONE FIXO (OPCIONAL)" transform={maskPhone} inputMode="tel" placeholder="(00) 0000-0000" />
         <TextField form={form} errors={errors} updateField={updateField} name="celular" label="CELULAR *" transform={maskPhone} inputMode="tel" placeholder="(00) 00000-0000" />
         <TextField form={form} errors={errors} updateField={updateField} name="profissao" label="PROFISSÃO *" maxLength="80" />
+        <BooleanField form={form} errors={errors} updateField={updateField} name="possuiCnh" label="POSSUI CNH? *" onChange={value => { updateField('possuiCnh', value); if (value === false) updateField('cnh', ''); }} />
+        {form.possuiCnh === true && <TextField form={form} errors={errors} updateField={updateField} name="cnh" label="NÚMERO DA CNH *" transform={value => onlyDigits(value, 11)} inputMode="numeric" placeholder="11 dígitos" />}
         <TextField form={form} errors={errors} updateField={updateField} name="rendaFamiliar" label="RENDA FAMILIAR *" type="number" min="0" step="0.01" inputMode="decimal" />
         <SelectField form={form} errors={errors} updateField={updateField} name="estadoCivil" label="ESTADO CIVIL *" onChange={onCivilChange} options={[["solteiro", "Solteiro(a)"], ["casado", "Casado(a)"], ["divorciado", "Divorciado(a)"], ["viuvo", "Viúvo(a)"], ["uniao_estavel", "União estável"]]} />
         {partner && <SelectField form={form} errors={errors} updateField={updateField} name="regimeBens" label={`REGIME DE BENS${required}`} options={[["comunhao_parcial", "Comunhão parcial"], ["comunhao_universal", "Comunhão universal"], ["separacao", "Separação de bens"], ["participacao_final", "Participação final nos aquestos"]]} />}
@@ -69,7 +70,7 @@ export default function CollectionForm({ lot, form, errors, updateField, formTab
         <TextField form={form} errors={errors} updateField={updateField} name="rgConjuge" label={`RG DO CÔNJUGE${required}`} transform={value => documentText(value, 20)} />
         <TextField form={form} errors={errors} updateField={updateField} name="orgaoExpedidorConjuge" label={`ÓRGÃO EXPEDIDOR${required}`} transform={value => documentText(value, 20)} />
         <TextField form={form} errors={errors} updateField={updateField} name="maeConjuge" label={`MÃE DO CÔNJUGE${required}`} maxLength="120" />
-        <TextField form={form} errors={errors} updateField={updateField} name="paiConjuge" label={`PAI DO CÔNJUGE${required}`} maxLength="120" />
+        <TextField form={form} errors={errors} updateField={updateField} name="paiConjuge" label="PAI DO CÔNJUGE (OPCIONAL)" maxLength="120" />
         <SelectField form={form} errors={errors} updateField={updateField} name="escolaridadeConjuge" label={`ESCOLARIDADE${required}`} options={education} />
         <TextField form={form} errors={errors} updateField={updateField} name="naturalidadeConjuge" label="NATURALIDADE (OPCIONAL)" maxLength="80" />
         <TextField form={form} errors={errors} updateField={updateField} name="nacionalidadeConjuge" label={`NACIONALIDADE${required}`} maxLength="80" />
@@ -86,8 +87,8 @@ export default function CollectionForm({ lot, form, errors, updateField, formTab
         <BooleanField form={form} errors={errors} updateField={updateField} name="possuiPendencia" label="POSSUI PENDÊNCIA JUDICIAL? *" />
         <TextField form={form} errors={errors} updateField={updateField} name="matricula" label="MATRÍCULA *" transform={value => documentText(value, 30)} />
         <TextField form={form} errors={errors} updateField={updateField} name="valorVenal" label="VALOR VENAL *" type="number" min="0" step="0.01" inputMode="decimal" />
-        <TextField form={form} errors={errors} updateField={updateField} name="dtInicioMoradia" label="INÍCIO DA MORADIA *" type="date" />
-        <FieldShell name="observacao" label="OBSERVAÇÃO *" errors={errors}><textarea id="observacao" rows="4" maxLength="1000" value={form.observacao} onChange={event => updateField('observacao', event.target.value)} aria-invalid={!!errors.observacao} /></FieldShell>
+        <TextField form={form} errors={errors} updateField={updateField} name="dtInicioMoradia" label="INÍCIO DA MORADIA (OPCIONAL)" type="date" />
+        <FieldShell name="observacao" label="OBSERVAÇÃO (OPCIONAL)" errors={errors}><textarea id="observacao" rows="4" maxLength="1000" value={form.observacao} onChange={event => updateField('observacao', event.target.value)} aria-invalid={!!errors.observacao} /></FieldShell>
         {form.possuiPendencia === true && <div className="document-field"><strong>DOCUMENTO DA PENDÊNCIA (OPCIONAL)</strong>{form.pendingDocument ? <div className="document-preview"><FileText size={18} /><span>{form.pendingDocument.name}</span><button type="button" onClick={() => updateField('pendingDocument', null)} aria-label="Remover documento"><Trash2 size={16} /></button></div> : <label className="document-upload"><Paperclip size={18} />Anexar imagem ou PDF<input type="file" accept="image/*,application/pdf" onChange={attachDocument} /></label>}</div>}
       </div>}
 

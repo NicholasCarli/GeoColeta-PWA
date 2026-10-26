@@ -64,16 +64,15 @@ try {
   await page.locator('#email').fill('maria@example.com');
   await page.locator('#rg').fill('1234567-8');
   await page.locator('#orgaoExpedidor').fill('SSP-MT');
-  await page.locator('#cnh').fill('12345678901');
   await page.locator('#mae').fill('Mãe de Teste');
-  await page.locator('#pai').fill('Pai de Teste');
   await page.locator('#escolaridade').selectOption('medio_completo');
   await page.locator('#naturalidade').fill('Cuiabá');
   await page.locator('#nacionalidade').fill('Brasileira');
   await page.locator('#outroImovel').selectOption('false');
-  await page.locator('#telefoneFixo').fill('6533333333');
   await page.locator('#celular').fill('65999999999');
   await page.locator('#profissao').fill('Professora');
+  await page.locator('#possuiCnh').selectOption('true');
+  await page.locator('#cnh').fill('12345678901');
   await page.locator('#rendaFamiliar').fill('3500');
   await page.locator('#estadoCivil').selectOption('uniao_estavel');
   await page.locator('#regimeBens').selectOption('comunhao_parcial');
@@ -92,9 +91,7 @@ try {
   await page.locator('#cep').fill('78000000');
   await page.locator('#matricula').fill('MAT-001');
   await page.locator('#valorVenal').fill('120000');
-  await page.locator('#dtInicioMoradia').fill('2015-01-10');
   await page.locator('#possuiPendencia').selectOption('true');
-  await page.locator('#observacao').fill('Coleta realizada sem conexão.');
   await page.locator('.document-upload input').setInputFiles('public/icon-192.png');
   await page.locator('.document-preview').waitFor();
   await page.screenshot({ path: `${out}/form.png`, fullPage: true });

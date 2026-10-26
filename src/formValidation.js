@@ -70,14 +70,15 @@ export function validateCollectionForm(form) {
     ['cpfCnpj', 'Informe o CPF ou CNPJ.'], ['nome', 'Informe o nome.'],
     ['dtNascimento', 'Informe a data de nascimento.'], ['rg', 'Informe o RG.'],
     ['orgaoExpedidor', 'Informe o órgão expedidor.'], ['mae', 'Informe o nome da mãe.'],
-    ['pai', 'Informe o nome do pai.'], ['sexo', 'Selecione o sexo.'],
+    ['sexo', 'Selecione o sexo.'],
     ['escolaridade', 'Selecione a escolaridade.'], ['naturalidade', 'Informe a naturalidade.'],
     ['nacionalidade', 'Informe a nacionalidade.'], ['celular', 'Informe o celular.'],
-    ['telefoneFixo', 'Informe o telefone fixo.'], ['profissao', 'Informe a profissão.'],
-    ['cnh', 'Informe a CNH.'], ['email', 'Informe o e-mail.'],
+    ['profissao', 'Informe a profissão.'], ['email', 'Informe o e-mail.'],
     ['rendaFamiliar', 'Informe a renda familiar.'], ['estadoCivil', 'Selecione o estado civil.'],
   ].forEach(([field, message]) => required(field, message));
   if (form.outroImovel !== true && form.outroImovel !== false) errors.outroImovel = 'Informe se possui outro imóvel.';
+  if (form.possuiCnh !== true && form.possuiCnh !== false) errors.possuiCnh = 'Informe se possui CNH.';
+  if (form.possuiCnh === true) required('cnh', 'Informe o número da CNH.');
 
   if (form.cpfCnpj && !validCpfCnpj(form.cpfCnpj)) errors.cpfCnpj = 'Informe um CPF ou CNPJ válido.';
   if (form.dtNascimento && !validDate(form.dtNascimento)) errors.dtNascimento = 'Informe uma data de nascimento válida.';
@@ -96,7 +97,7 @@ export function validateCollectionForm(form) {
       ['cpfCnpjConjuge', 'Informe o CPF ou CNPJ do cônjuge.'], ['nomeConjuge', 'Informe o nome do cônjuge.'],
       ['dtNascimentoConjuge', 'Informe o nascimento do cônjuge.'], ['rgConjuge', 'Informe o RG do cônjuge.'],
       ['orgaoExpedidorConjuge', 'Informe o órgão expedidor do cônjuge.'], ['maeConjuge', 'Informe o nome da mãe do cônjuge.'],
-      ['paiConjuge', 'Informe o nome do pai do cônjuge.'], ['sexoConjuge', 'Selecione o sexo do cônjuge.'],
+      ['sexoConjuge', 'Selecione o sexo do cônjuge.'],
       ['escolaridadeConjuge', 'Selecione a escolaridade do cônjuge.'], ['nacionalidadeConjuge', 'Informe a nacionalidade do cônjuge.'],
       ['celularConjuge', 'Informe o celular do cônjuge.'], ['profissaoConjuge', 'Informe a profissão do cônjuge.'],
     ].forEach(([field, message]) => required(field, message));
@@ -111,8 +112,7 @@ export function validateCollectionForm(form) {
   [
     ['cep', 'Informe o CEP.'], ['bairro', 'Informe o bairro.'], ['quadra', 'Informe a quadra.'],
     ['lote', 'Informe o lote.'], ['logradouro', 'Informe o logradouro.'], ['matricula', 'Informe a matrícula.'],
-    ['valorVenal', 'Informe o valor venal.'], ['dtInicioMoradia', 'Informe o início da moradia.'],
-    ['observacao', 'Informe a observação.'],
+    ['valorVenal', 'Informe o valor venal.'],
   ].forEach(([field, message]) => required(field, message));
   if (form.possuiPendencia !== true && form.possuiPendencia !== false) errors.possuiPendencia = 'Informe se existe pendência judicial.';
   if (form.cep && digits(form.cep).length !== 8) errors.cep = 'Informe um CEP válido.';

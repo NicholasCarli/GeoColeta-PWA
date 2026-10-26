@@ -16,6 +16,8 @@ A coleta em campo pode acontecer em locais com conexão instável ou inexistente
 - formulário de coleta completo com rascunho automático e persistência no IndexedDB;
 - CPF e CNPJ com máscara e validação dos dígitos verificadores;
 - dados do cônjuge obrigatórios para casado e opcionais para união estável;
+- telefone fixo, nome do pai, observação e início da moradia opcionais;
+- pergunta sobre posse de CNH, exigindo o número somente quando a resposta for positiva;
 - anexo local de imagem ou PDF para pendência judicial;
 - fila de pendências com falha simulada e nova tentativa;
 - prevenção de reenvio de um registro já confirmado;
