@@ -21,6 +21,20 @@ const state = () => page.evaluate(() => new Promise((resolve, reject) => {
 }));
 try {
   await page.goto(base);
+  await page.getByRole('heading', { name: 'Acessar demonstração' }).waitFor();
+  const login = page.getByRole('button', { name: 'Entrar na demonstração' });
+  await context.setOffline(true);
+  await page.locator('.banner.warning').waitFor();
+  assert.ok(await login.isDisabled());
+  await context.setOffline(false);
+  await page.locator('.banner.success').waitFor();
+  await page.getByPlaceholder('Digite o usuário').fill('invalido');
+  await page.getByPlaceholder('Digite a senha').fill('invalido');
+  await login.click();
+  await page.getByText('Usuário ou senha inválidos. Use as credenciais de demonstração.').waitFor();
+  await page.getByPlaceholder('Digite o usuário').fill('teste123');
+  await page.getByPlaceholder('Digite a senha').fill('teste123');
+  await login.click();
   await page.getByRole('heading', { name: 'Lotes disponíveis' }).waitFor();
   await page.evaluate(async () => { await navigator.serviceWorker.ready; await document.fonts.ready; });
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
@@ -31,6 +45,8 @@ try {
   await page.getByRole('button', { name: 'Baixar dados para uso offline' }).click();
   await page.getByRole('heading', { name: 'Lotes disponíveis' }).waitFor();
   assert.equal(Object.keys((await state()).prepared).length, 3);
+  assert.equal((await state()).session.userId, 'usuario-demo-001');
+  assert.ok(Object.values((await state()).prepared).every(lot => lot.userId === 'usuario-demo-001' && lot.projectId === 'projeto-demo-centro'));
   console.log('OK — filtros e preparação de três lotes');
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -51,6 +67,8 @@ try {
   await page.getByRole('button', { name: 'Salvar registro offline' }).click();
   await page.getByRole('heading', { name: 'Registro salvo' }).waitFor();
   assert.equal((await state()).records.length, 1);
+  assert.equal((await state()).records[0].userId, 'usuario-demo-001');
+  assert.equal((await state()).records[0].projectId, 'projeto-demo-centro');
   console.log('OK — validação, digitação contínua e salvamento offline com foto');
 
   await page.reload();
@@ -60,6 +78,10 @@ try {
   assert.equal(Object.keys((await state()).prepared).length, 3);
   console.log('OK — aplicação, fontes, foto e registro recuperados após recarregamento realmente offline');
   await page.locator('.bottom-nav button').nth(2).click();
+  await page.getByRole('button', { name: 'Sair da demonstração' }).click();
+  await page.getByRole('heading', { name: 'Existem dados não sincronizados' }).waitFor();
+  await page.getByRole('button', { name: 'Continuar conectado' }).click();
+  console.log('OK — saída protegida quando existem dados não sincronizados');
   await page.getByRole('button', { name: 'Remover lotes preparados' }).click();
   await page.getByText('Conclua os rascunhos e sincronize as pendências antes de remover os lotes.').waitFor();
   assert.equal(Object.keys((await state()).prepared).length, 3);
@@ -82,6 +104,11 @@ try {
   await page.getByRole('button', { name: 'Ver registros enviados' }).click();
   assert.ok(await page.getByRole('button', { name: 'Sincronizar 0 registros' }).isDisabled());
   console.log('OK — falha preservada, nova tentativa e prevenção de reenvio confirmado');
+  await page.locator('.bottom-nav button').nth(2).click();
+  await page.getByRole('button', { name: 'Sair da demonstração' }).click();
+  await page.getByRole('heading', { name: 'Acessar demonstração' }).waitFor();
+  assert.equal((await state()).session, null);
+  console.log('OK — primeiro acesso exige rede e saída oculta os dados sem apagá-los');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   for (const f of await readdir('public/assets')) assert.ok((await stat(`public/assets/${f}`)).size > 0);
   assert.deepEqual(errors, []);

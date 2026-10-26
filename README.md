@@ -9,6 +9,8 @@ A coleta em campo pode acontecer em locais com conexão instável ou inexistente
 ## Funcionalidades
 
 - instalação como PWA por meio de manifest e service worker;
+- sessão fictícia iniciada online e mantida para continuidade offline;
+- autenticação simulada com as credenciais `teste123` / `teste123`, sem armazenamento da senha;
 - cache da aplicação e das fontes para abertura offline;
 - preparação de lotes fictícios para uso offline;
 - formulário com rascunho, foto e persistência no IndexedDB;
@@ -71,6 +73,7 @@ public/              ícones, manifest e assets visuais
 scripts/build.mjs    build e geração do service worker
 scripts/smoke.mjs    teste automatizado do fluxo offline
 src/main.jsx         interface e fluxo demonstrativo
+src/session.css      estilos da entrada e identificação da sessão
 src/storage.js       IndexedDB e dados fictícios
 src/styles.css       estilos responsivos
 ```

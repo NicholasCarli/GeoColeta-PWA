@@ -36,3 +36,28 @@ Este arquivo registra a evolução do protótipo acadêmico. Não devem ser incl
 ### Próximo passo
 
 - Iniciar a implementação incremental das próximas funcionalidades do protótipo acadêmico.
+
+## 2026-10-26 - Sessão offline simulada
+
+### Implementação
+
+- Adicionado primeiro acesso online com usuário e projeto fictícios, sem senha real.
+- A tela de entrada passou a validar as credenciais fictícias `teste123` / `teste123`; a senha permanece apenas em memória e não é persistida.
+- Sessão persistida no IndexedDB para permitir a continuidade do fluxo depois de perder a conexão.
+- Lotes preparados e registros locais passaram a guardar os identificadores do usuário e do projeto de demonstração.
+- A saída da sessão oculta os dados e exige confirmação quando existem rascunhos ou pendências, sem apagá-los.
+- Registros antigos da simulação recebem a identificação fictícia durante a leitura para preservar os testes já realizados.
+
+### Verificações
+
+- [x] build de produção;
+- [x] primeiro acesso bloqueado sem conexão;
+- [x] sessão e registro associados ao usuário e projeto fictícios;
+- [x] sessão preservada durante recarregamento offline;
+- [x] aviso de saída com pendências;
+- [x] saída após sincronização sem apagar os dados locais;
+- [x] fluxo completo sem erros JavaScript.
+
+### Próximo passo
+
+- Implementar a sincronização automática opcional quando a conexão retornar, mantendo a ação manual.
