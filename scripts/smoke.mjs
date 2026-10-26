@@ -1,0 +1,94 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir, readdir, stat } from 'node:fs/promises';
+
+const base = process.env.SIMULATION_URL || 'http://127.0.0.1:4173';
+const out = '.openai/.local/qa';
+await mkdir(out, { recursive: true });
+const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', args: ['--no-sandbox'] });
+const context = await browser.newContext({ viewport: { width: 1360, height: 1000 } });
+const page = await context.newPage();
+const errors = [];
+page.on('pageerror', error => errors.push(error.message));
+const state = () => page.evaluate(() => new Promise((resolve, reject) => {
+  const request = indexedDB.open('geocoleta-simulacao-v1', 1);
+  request.onsuccess = () => {
+    const db = request.result;
+    const read = db.transaction('simulation').objectStore('simulation').get('state');
+    read.onsuccess = () => { resolve(read.result); db.close(); };
+    read.onerror = () => reject(read.error);
+  };
+}));
+try {
+  await page.goto(base);
+  await page.getByRole('heading', { name: 'Lotes disponíveis' }).waitFor();
+  await page.evaluate(async () => { await navigator.serviceWorker.ready; await document.fonts.ready; });
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await page.getByLabel('Quadra', { exact: true }).selectOption('12');
+  assert.equal(await page.locator('.lot-card').count(), 3);
+  await page.screenshot({ path: `${out}/desktop.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Preparar lotes para uso offline' }).click();
+  await page.getByRole('button', { name: 'Baixar dados para uso offline' }).click();
+  await page.getByRole('heading', { name: 'Lotes disponíveis' }).waitFor();
+  assert.equal(Object.keys((await state()).prepared).length, 3);
+  console.log('OK — filtros e preparação de três lotes');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await context.setOffline(true);
+  await page.locator('.connection-bar.offline').waitFor();
+  await page.screenshot({ path: `${out}/mobile-offline.png`, fullPage: true });
+  await page.getByRole('button', { name: /Rua Cel. Virgílio/ }).click();
+  await page.getByRole('button', { name: 'Iniciar coleta' }).click();
+  await page.getByRole('button', { name: 'Salvar registro offline' }).click();
+  await page.getByText('Informe o nome do responsável.').waitFor();
+  await page.getByLabel('Situação encontrada', { exact: true }).selectOption('Morador presente');
+  await page.getByPlaceholder('Digite o nome').pressSequentially('Maria de Teste', { delay: 20 });
+  assert.equal(await page.getByPlaceholder('Digite o nome').inputValue(), 'Maria de Teste');
+  await page.getByLabel('Observações', { exact: true }).fill('Coleta realizada sem conexão.');
+  await page.getByLabel('Adicionar foto', { exact: true }).setInputFiles('public/icon-192.png');
+  await page.locator('.photo-preview').waitFor();
+  await page.screenshot({ path: `${out}/form.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Salvar registro offline' }).click();
+  await page.getByRole('heading', { name: 'Registro salvo' }).waitFor();
+  assert.equal((await state()).records.length, 1);
+  console.log('OK — validação, digitação contínua e salvamento offline com foto');
+
+  await page.reload();
+  await page.getByRole('heading', { name: 'Lotes disponíveis' }).waitFor();
+  assert.equal((await state()).records[0].form.name, 'Maria de Teste');
+  assert.ok((await state()).records[0].form.photo.startsWith('data:image/'));
+  assert.equal(Object.keys((await state()).prepared).length, 3);
+  console.log('OK — aplicação, fontes, foto e registro recuperados após recarregamento realmente offline');
+  await page.locator('.bottom-nav button').nth(2).click();
+  await page.getByRole('button', { name: 'Remover lotes preparados' }).click();
+  await page.getByText('Conclua os rascunhos e sincronize as pendências antes de remover os lotes.').waitFor();
+  assert.equal(Object.keys((await state()).prepared).length, 3);
+  console.log('OK — proteção de dados com pendências');
+
+  await page.locator('.bottom-nav button').nth(1).click();
+  await context.setOffline(false);
+  await page.locator('.connection-bar.online').waitFor();
+  await page.locator('.mobile-failure input').check();
+  await page.getByRole('button', { name: 'Sincronizar 1 registro' }).click();
+  await page.locator('.badge.error').waitFor();
+  assert.equal((await state()).records[0].status, 'error');
+  await page.screenshot({ path: `${out}/sync-error.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Sincronizar 1 registro' }).click();
+  await page.getByRole('heading', { name: 'Tudo sincronizado' }).waitFor();
+  const final = await state();
+  assert.equal(final.records.length, 1);
+  assert.equal(final.records[0].status, 'sent');
+  assert.equal(final.records[0].attempts, 2);
+  await page.getByRole('button', { name: 'Ver registros enviados' }).click();
+  assert.ok(await page.getByRole('button', { name: 'Sincronizar 0 registros' }).isDisabled());
+  console.log('OK — falha preservada, nova tentativa e prevenção de reenvio confirmado');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  for (const f of await readdir('public/assets')) assert.ok((await stat(`public/assets/${f}`)).size > 0);
+  assert.deepEqual(errors, []);
+  console.log('OK — responsividade, assets do Figma e ausência de erros JavaScript');
+} catch (error) {
+  await page.screenshot({ path: `${out}/failure.png`, fullPage: true });
+  console.error(error);
+  console.error('Browser errors:', errors);
+  process.exitCode = 1;
+} finally { await browser.close(); }
