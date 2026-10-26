@@ -13,7 +13,10 @@ A coleta em campo pode acontecer em locais com conexão instável ou inexistente
 - autenticação simulada com as credenciais `teste123` / `teste123`, sem armazenamento da senha;
 - cache da aplicação e das fontes para abertura offline;
 - preparação de lotes fictícios para uso offline;
-- formulário com rascunho, foto e persistência no IndexedDB;
+- formulário de coleta completo com rascunho automático e persistência no IndexedDB;
+- CPF e CNPJ com máscara e validação dos dígitos verificadores;
+- dados do cônjuge obrigatórios para casado e opcionais para união estável;
+- anexo local de imagem ou PDF para pendência judicial;
 - fila de pendências com falha simulada e nova tentativa;
 - prevenção de reenvio de um registro já confirmado;
 - indicadores de conexão e de sincronização;
@@ -25,7 +28,7 @@ A coleta em campo pode acontecer em locais com conexão instável ou inexistente
 - não possui autenticação real;
 - o envio para o servidor é simulado;
 - não contém código do frontend ou backend privados da empresa;
-- não representa todos os formulários e regras do GeoColeta real.
+- reproduz somente o formulário e as regras necessários para demonstrar o fluxo acadêmico.
 
 ## Tecnologias
 
@@ -61,17 +64,22 @@ Depois de abrir a aplicação uma vez, utilize o modo offline do navegador ou o 
 Para executar o teste automatizado, mantenha o preview ativo e use outro terminal:
 
 ```powershell
+npm run test:form
 npm run test:smoke
 ```
 
-O teste prepara três lotes, salva formulário e foto offline, recarrega a aplicação sem rede, simula uma falha de envio e confirma a nova tentativa sem duplicidade.
+O primeiro comando verifica isoladamente as regras do formulário. O teste de fluxo prepara três lotes, salva o formulário e um documento offline, recarrega a aplicação sem rede, simula uma falha de envio e confirma a nova tentativa sem duplicidade.
 
 ## Estrutura principal
 
 ```text
 public/              ícones, manifest e assets visuais
 scripts/build.mjs    build e geração do service worker
+scripts/form-validation.mjs teste das regras do formulário
 scripts/smoke.mjs    teste automatizado do fluxo offline
+src/CollectionForm.jsx formulário completo da coleta
+src/formValidation.js regras e máscaras do formulário
+src/form.css          estilos do formulário
 src/main.jsx         interface e fluxo demonstrativo
 src/session.css      estilos da entrada e identificação da sessão
 src/storage.js       IndexedDB e dados fictícios

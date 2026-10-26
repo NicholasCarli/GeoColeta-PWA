@@ -66,6 +66,15 @@ export const lots = [
   ['012', 'Vila Nova', '08', 'Rua do Sol', 'Ativo', '125'],
 ].map(([id, bairro, quadra, address, status, number]) => ({ id, bairro, quadra, address, status, number, inscription: `0001.${quadra.padStart(3, '0')}.${id}` }));
 
-export const blankForm = lot => ({ situation: '', name: '', civil: '', spouse: '', occupancy: '', years: '', notes: '', photo: '', address: `${lot.address}, ${lot.number}` });
+export const blankForm = lot => ({
+  cpfCnpj: '', nome: '', dtNascimento: '', rg: '', orgaoExpedidor: '', mae: '', pai: '',
+  sexo: '', escolaridade: '', naturalidade: '', nacionalidade: '', celular: '', telefoneFixo: '',
+  profissao: '', cnh: '', email: '', outroImovel: '', rendaFamiliar: '', estadoCivil: '', regimeBens: '',
+  cpfCnpjConjuge: '', nomeConjuge: '', dtNascimentoConjuge: '', rgConjuge: '', orgaoExpedidorConjuge: '',
+  maeConjuge: '', paiConjuge: '', sexoConjuge: '', escolaridadeConjuge: '', naturalidadeConjuge: '',
+  nacionalidadeConjuge: '', celularConjuge: '', profissaoConjuge: '', cep: '', bairro: lot.bairro,
+  quadra: lot.quadra, lote: lot.id, logradouro: lot.address, matricula: '', valorVenal: '',
+  dtInicioMoradia: '', possuiPendencia: '', observacao: '', pendingDocument: null,
+});
 export const formatDate = value => value ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : 'Ainda não realizada';
 export const delay = ms => new Promise(resolve => setTimeout(resolve, ms));

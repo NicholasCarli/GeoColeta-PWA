@@ -60,4 +60,33 @@ Este arquivo registra a evolução do protótipo acadêmico. Não devem ser incl
 
 ### Próximo passo
 
-- Implementar a sincronização automática opcional quando a conexão retornar, mantendo a ação manual.
+- Completar o formulário de coleta com as regras validadas para uso offline.
+
+## 2026-10-26 - Formulário completo da coleta
+
+### Implementação
+
+- Substituído o formulário reduzido pelo conjunto de dados pessoais, cônjuge e imóvel usado no fluxo de coleta.
+- Mantido o salvamento automático do rascunho no IndexedDB durante o preenchimento.
+- Adicionadas máscaras e validações básicas para CPF/CNPJ, telefones, CEP, RG, CNH, e-mail, matrícula, datas e valores.
+- Dados do cônjuge são obrigatórios para pessoa casada e opcionais para união estável; quando algum dado opcional é informado, ele é validado.
+- Ao retirar um estado civil com cônjuge, a confirmação para limpar a seção aparece somente quando existem dados preenchidos.
+- Adicionado anexo opcional de imagem ou PDF, com limite de 5 MB, quando existe pendência judicial.
+- Rascunhos do modelo anterior continuam abrindo, com preenchimento dos novos campos pelo modelo atual.
+
+### Decisões
+
+- O protótipo continua usando autenticação simulada, dados fictícios e IndexedDB, sem banco ou API externa.
+- Uma integração real ficará para uma etapa posterior e isolada, somente se for necessária para a demonstração.
+- A validação completa acontece antes de transformar o rascunho em registro pendente de sincronização.
+
+### Verificações
+
+- [x] `npm run test:form` - CPF/CNPJ, regras de casamento e união estável validados;
+- [x] `npm run build` - aplicação e service worker gerados;
+- [x] `npm run test:smoke` - formulário, confirmação de limpeza, documento e persistência offline validados;
+- [x] compatibilidade de leitura dos rascunhos do modelo anterior conferida.
+
+### Próximo passo
+
+- Ampliar os dados fictícios de lotes e avaliar a sincronização automática sem remover a ação manual.
