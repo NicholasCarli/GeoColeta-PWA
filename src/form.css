@@ -1,0 +1,80 @@
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.form-note {
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: #e6f2f7;
+  color: #2081a5;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.document-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.document-field > strong {
+  color: #1f435a;
+  font-size: 10px;
+}
+
+.document-upload,
+.document-preview {
+  min-height: 48px;
+  border: 1px solid #dce4e8;
+  border-radius: 9px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px;
+  color: #0090c1;
+  font-size: 10px;
+}
+
+.document-upload {
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.document-upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.document-preview span {
+  flex: 1;
+  color: #345b6d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-preview button {
+  display: grid;
+  place-items: center;
+  padding: 5px;
+  background: transparent;
+  color: #b63434;
+}
+
+.form-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #fcecec;
+  color: #b63434;
+  font-size: 10px;
+}

@@ -1,25 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Download, Grid2X2, RefreshCw, UserRound, Wifi, WifiOff, Smartphone, MapPin, ChevronRight, HardDrive, CloudUpload, AlertCircle, X, ImagePlus, Trash2, RotateCcw, CheckCheck, LoaderCircle, ShieldCheck, Info } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Download, Grid2X2, RefreshCw, UserRound, Wifi, WifiOff, Smartphone, MapPin, ChevronRight, HardDrive, CloudUpload, AlertCircle, X, Trash2, RotateCcw, CheckCheck, LoaderCircle, ShieldCheck, Info } from 'lucide-react';
 import '@fontsource/poppins/400.css';
 import '@fontsource/poppins/500.css';
 import '@fontsource/poppins/600.css';
 import '@fontsource/poppins/700.css';
 import { lots, demoSession, initialState, loadState, saveState, blankForm, formatDate, delay } from './storage';
+import CollectionForm from './CollectionForm';
+import { clearSpouse, hasPartner, hasSpouseData, validateCollectionForm } from './formValidation';
 import './styles.css';
 import './session.css';
 
 const statusLabels = { pending: 'Pendente', sending: 'Enviando', sent: 'Enviado', error: 'Erro' };
 const pageSubtitles = { lots: 'Consulta e coleta de dados em campo', prepare: 'Download dos dados necessários', detail: 'Dados do lote e informações da coleta', form: 'Registro de informações em campo', saved: 'Registro armazenado no dispositivo', queue: 'Fila de registros locais', synced: 'Sincronização de demonstração concluída', device: 'Seus dados, neste dispositivo' };
 const screenDots = { lots: 0, prepare: 3, detail: 4, form: 5, saved: 6, queue: 7, synced: 8, device: 0 };
-const FormContext = React.createContext(null);
+const normalizeForm = (lot, stored = {}) => ({ ...blankForm(lot), ...stored, nome: stored.nome || stored.name || '', possuiCnh: stored.possuiCnh ?? (stored.cnh ? true : '') });
 const Button = ({ children, secondary, className = '', ...props }) => <button className={`button ${secondary ? 'secondary' : 'primary'} ${className}`} {...props}>{children}</button>;
 const Banner = ({ title, children, type = 'success', icon: Icon = Info }) => <div className={`banner ${type}`}><Icon size={18} /><div><strong>{title}</strong>{children && <p>{children}</p>}</div></div>;
 const Heading = ({ title, children, back }) => <div className="page-heading">{back && <button className="back" onClick={back}><ArrowLeft size={15} />Voltar</button>}<h1>{title}</h1>{children && <p>{children}</p>}</div>;
-function Field({ label, field, children, ...props }) {
-  const { form, errors, updateField } = React.useContext(FormContext);
-  return <label className="field"><span>{label}</span>{children || <input {...props} value={form?.[field] || ''} onChange={e => updateField(field, e.target.value)} aria-invalid={!!errors[field]} aria-describedby={errors[field] ? `error-${field}` : undefined} />}{errors[field] && <small className="field-error" id={`error-${field}`}>{errors[field]}</small>}</label>;
-}
 
 function App() {
   const [data, setData] = useState(initialState);
@@ -49,6 +47,8 @@ function App() {
   const [draftTime, setDraftTime] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [confirmClearSpouse, setConfirmClearSpouse] = useState(false);
+  const [pendingCivil, setPendingCivil] = useState('');
   const [installEvent, setInstallEvent] = useState(null);
   const [syncedCount, setSyncedCount] = useState(0);
   const mainRef = useRef(null);
@@ -113,10 +113,23 @@ function App() {
   function openForm() {
     if (!data.prepared[active.id]) return notify('Prepare este lote para iniciar a coleta nesta simulação.', 'error');
     const existing = sessionRecords.find(r => r.lotId === active.id && r.status !== 'sent');
-    setForm(data.drafts[active.id] || existing?.form || blankForm(active));
+    const stored = data.drafts[active.id] || existing?.form;
+    setForm(normalizeForm(active, stored));
     setFormTab('pessoais'); setErrors({}); setDraftTime(null); setScreen('form');
   }
   function updateField(key, value) { setForm(prev => ({ ...prev, [key]: value })); setErrors(prev => ({ ...prev, [key]: '' })); }
+  function changeCivilStatus(next) {
+    if (hasPartner(form.estadoCivil) && !hasPartner(next) && hasSpouseData(form)) {
+      setPendingCivil(next); setConfirmClearSpouse(true); return;
+    }
+    setForm(prev => ({ ...prev, estadoCivil: next, ...(!hasPartner(next) ? { regimeBens: '' } : {}) }));
+    setErrors(prev => ({ ...prev, estadoCivil: '', regimeBens: '' }));
+    if (!hasPartner(next)) setFormTab('pessoais');
+  }
+  function confirmCivilChange() {
+    setForm(prev => ({ ...clearSpouse(prev), estadoCivil: pendingCivil, regimeBens: '' }));
+    setErrors({}); setFormTab('pessoais'); setPendingCivil(''); setConfirmClearSpouse(false);
+  }
 
   async function prepareLots() {
     if (lock.current) return;
@@ -134,8 +147,10 @@ function App() {
   async function saveRecord(event) {
     event.preventDefault();
     if (lock.current) return;
-    const invalid = { name: !form.name.trim() ? 'Informe o nome do responsável.' : '', situation: !form.situation ? 'Selecione a situação encontrada.' : '' };
-    if (invalid.name || invalid.situation) { setErrors(invalid); setFormTab('pessoais'); return; }
+    const validation = validateCollectionForm(form);
+    if (Object.keys(validation.errors).length) {
+      setErrors(validation.errors); setFormTab(validation.firstTab); notify('Revise os campos destacados antes de finalizar.', 'error'); return;
+    }
     lock.current = true; setBusy('save');
     try {
       await commit(s => {
@@ -174,11 +189,11 @@ function App() {
     finally { setBusy(''); lock.current = false; }
   }
 
-  async function attachPhoto(event) {
+  async function attachDocument(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) { notify('Escolha uma imagem com até 5 MB.', 'error'); event.target.value = ''; return; }
-    const reader = new FileReader(); reader.onload = () => updateField('photo', reader.result); reader.onerror = () => notify('Não foi possível ler a imagem.', 'error'); reader.readAsDataURL(file);
+    if ((!file.type.startsWith('image/') && file.type !== 'application/pdf') || file.size > 5 * 1024 * 1024) { notify('Escolha uma imagem ou PDF com até 5 MB.', 'error'); event.target.value = ''; return; }
+    const reader = new FileReader(); reader.onload = () => updateField('pendingDocument', { name: file.name, type: file.type, data: reader.result }); reader.onerror = () => notify('Não foi possível ler o documento.', 'error'); reader.readAsDataURL(file);
   }
 
   async function clearPrepared() {
@@ -212,7 +227,7 @@ function App() {
   if (storageError) return <div className="auth-page"><section className="auth-card"><Banner type="error" title="Armazenamento indisponível">{storageError} Tente abrir em uma janela normal do navegador.</Banner></section></div>;
   if (!session) return <div className="auth-page"><form className="auth-card" onSubmit={e => { e.preventDefault(); signIn(); }}><div className="auth-brand">GEOCOLETA</div><span className="auth-label">SIMULAÇÃO · DADOS FICTÍCIOS</span><h1>Acessar demonstração</h1><p>O primeiro acesso exige conexão. Depois de preparar os lotes, esta sessão poderá continuar funcionando offline.</p><div className="auth-fields"><label className="field"><span>USUÁRIO</span><input autoComplete="username" value={credentials.username} onChange={e => { setCredentials(c => ({ ...c, username: e.target.value })); setAuthError(''); }} placeholder="Digite o usuário" /></label><label className="field"><span>SENHA</span><input type="password" autoComplete="current-password" value={credentials.password} onChange={e => { setCredentials(c => ({ ...c, password: e.target.value })); setAuthError(''); }} placeholder="Digite a senha" /></label>{authError && <p className="field-error" role="alert">{authError}</p>}<small>Credenciais de teste: <strong>teste123</strong> / <strong>teste123</strong></small></div><div className="auth-identity"><UserRound size={20} /><div><strong>{demoSession.userName}</strong><span>{demoSession.projectName}</span></div></div><Banner title={realOnline ? 'Conexão disponível' : 'Conecte-se para entrar'} type={realOnline ? 'success' : 'warning'} icon={realOnline ? Wifi : WifiOff}>{realOnline ? 'A senha é validada somente na simulação e não é armazenada.' : 'O acesso offline só é liberado depois de uma sessão iniciada online.'}</Banner><Button type="submit" disabled={!realOnline || !!busy}>{busy === 'signin' ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={17} />}{busy === 'signin' ? 'Entrando…' : 'Entrar na demonstração'}</Button><small>Conta e projeto fictícios para validação acadêmica.</small></form></div>;
 
-  return <FormContext.Provider value={{ form, errors, updateField }}><div className="demo-layout">
+  return <div className="demo-layout">
     <aside className="demo-guide">
       <div className="eyebrow"><span className="live-dot" />PROTÓTIPO INTERATIVO</div>
       <h2>Seu trabalho<br />continua.<br /><span>Mesmo offline.</span></h2>
@@ -236,15 +251,11 @@ function App() {
 
           {screen === 'detail' && active && <><Heading title={`Lote ${active.id}`} back={() => navigate('lots')}>{active.address}</Heading>{data.prepared[active.id] ? <Banner title="Disponível offline" icon={HardDrive}>Esses dados foram preparados neste dispositivo.</Banner> : <Banner title="Este lote ainda não foi preparado" type="warning">Prepare os dados na lista para iniciar a coleta.</Banner>}<section className="data-card lot-facts"><dl>{[['Bairro', active.bairro], ['Quadra', `Q-${active.quadra}`], ['Inscrição', active.inscription], ['Situação', active.status]].map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl></section><div className="location-placeholder"><MapPin size={23} /><div><strong>{active.address}, {active.number}</strong><p>Localização textual disponível. O mapa não faz parte desta simulação.</p></div></div>{data.drafts[active.id] && <Banner type="warning" title="Você tem um rascunho">Continue de onde parou. Os campos foram mantidos.</Banner>}<div className="bottom-action"><Button onClick={openForm} disabled={!data.prepared[active.id]}>{data.drafts[active.id] ? 'Continuar coleta' : 'Iniciar coleta'}<ArrowRight size={17} /></Button></div></>}
 
-          {screen === 'form' && form && active && <><Heading title={`Nova coleta — Lote ${active.id}`} back={() => navigate('detail')}>REURB · O preenchimento será salvo neste dispositivo.</Heading><div className="form-tabs" role="tablist" aria-label="Seções do REURB">{[['pessoais', 'Pessoais'], ['conjuge', 'Cônjuge'], ['imovel', 'Imóvel']].map(([key, label]) => <button role="tab" aria-selected={formTab === key} key={key} onClick={() => setFormTab(key)}>{label}</button>)}</div><form onSubmit={saveRecord} noValidate>
-            {formTab === 'pessoais' && <div className="form-section"><Field label="SITUAÇÃO ENCONTRADA *" field="situation"><select aria-label="Situação encontrada" value={form.situation} onChange={e => updateField('situation', e.target.value)} aria-invalid={!!errors.situation}><option value="">Selecione uma opção</option><option>Morador presente</option><option>Morador ausente</option><option>Imóvel desocupado</option><option>Retorno necessário</option></select></Field><Field label="RESPONSÁVEL NO LOCAL *" field="name" placeholder="Digite o nome" autoComplete="off" /><Field label="ESTADO CIVIL" field="civil"><select aria-label="Estado civil" value={form.civil} onChange={e => updateField('civil', e.target.value)}><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>União estável</option><option>Divorciado(a)</option><option>Viúvo(a)</option></select></Field><Field label="OBSERVAÇÕES" field="notes"><textarea aria-label="Observações" placeholder="Digite as informações coletadas" value={form.notes} onChange={e => updateField('notes', e.target.value)} rows="3" /></Field></div>}
-            {formTab === 'conjuge' && <div className="form-section"><Banner title="Dados complementares" type="info">Preencha quando houver cônjuge ou companheiro(a).</Banner><Field label="NOME DO CÔNJUGE" field="spouse" placeholder="Nome completo (opcional)" /></div>}
-            {formTab === 'imovel' && <div className="form-section"><Field label="ENDEREÇO DO IMÓVEL" field="address" /><Field label="OCUPAÇÃO DO IMÓVEL" field="occupancy"><select aria-label="Ocupação do imóvel" value={form.occupancy} onChange={e => updateField('occupancy', e.target.value)}><option value="">Selecione</option><option>Residencial</option><option>Comercial</option><option>Misto</option><option>Terreno sem construção</option></select></Field><Field label="TEMPO DE MORADIA (ANOS)" field="years" type="number" min="0" max="120" /></div>}
-            <label className="photo-upload">{form.photo ? <img className="photo-preview" src={form.photo} alt="Foto anexada à coleta" /> : <><ImagePlus size={26} /><span>Adicionar foto (opcional)</span></>}<input type="file" accept="image/*" aria-label="Adicionar foto" onChange={attachPhoto} /></label>{form.photo && <button type="button" className="text-button danger" onClick={() => updateField('photo', '')}>Remover foto</button>}<Button type="submit" disabled={!!busy}>{busy === 'save' ? <LoaderCircle className="spin" size={18} /> : <HardDrive size={17} />}{busy === 'save' ? 'Salvando…' : 'Salvar registro offline'}</Button><p className="draft-status"><ShieldCheck size={13} />{draftTime ? 'Rascunho salvo neste dispositivo' : 'Campos obrigatórios marcados com *'}</p></form></>}
+          {screen === 'form' && form && active && <CollectionForm lot={active} form={form} errors={errors} updateField={updateField} formTab={formTab} setFormTab={setFormTab} onCivilChange={changeCivilStatus} onSubmit={saveRecord} busy={busy} draftTime={draftTime} attachDocument={attachDocument} />}
 
           {screen === 'saved' && <><section className="success-panel"><span className="success-icon"><Check size={34} strokeWidth={2.5} /></span><h1>Registro salvo</h1><p>A coleta foi armazenada no dispositivo e está aguardando sincronização.</p></section><Banner type="warning" title={`${pending.length} ${pending.length === 1 ? 'item pendente' : 'itens pendentes'}`}>Sincronize quando a conexão estiver disponível.</Banner><Button onClick={() => navigate('queue')}>Ver pendências<ArrowRight size={17} /></Button><Button secondary onClick={() => navigate('lots')}>Voltar para lotes</Button></>}
 
-          {screen === 'queue' && <><Heading title="Pendências de sincronização">Revise os registros salvos neste dispositivo.</Heading><Banner title={online ? 'Conexão disponível' : 'Sem conexão no momento'} type={online ? 'success' : 'warning'} icon={online ? Wifi : WifiOff}>{online ? 'Agora é possível simular o envio dos registros pendentes.' : 'Suas coletas estão seguras. Reconecte para sincronizar.'}</Banner>{!sessionRecords.length && <div className="empty-state"><CheckCheck size={35} /><h3>Nenhuma pendência por aqui</h3><p>Suas coletas salvas aparecerão nesta tela.</p><button className="text-button" onClick={() => navigate('lots')}>Ir para os lotes<ArrowRight size={14} /></button></div>}<div className="queue-list">{[...sessionRecords].reverse().map(record => { const lot = lots.find(l => l.id === record.lotId); return <article className="data-card queue-card" key={record.id}><div className="queue-title"><h3>Lote {record.lotId}</h3><span className={`badge ${record.status}`}>{record.status === 'sending' && <LoaderCircle size={11} className="spin" />}{statusLabels[record.status]}</span></div><p>{lot.address}</p><small>{record.status === 'sent' ? 'Enviado na simulação' : 'Salvo'} em {formatDate(record.status === 'sent' ? record.sentAt : record.createdAt)}</small>{record.error && <div className="queue-error"><AlertCircle size={14} /><span>{record.error}</span></div>}{record.status !== 'sent' && record.status !== 'sending' && <button className="text-button" onClick={() => { setActive(lot); setForm(record.form); setFormTab('pessoais'); setErrors({}); setScreen('form'); }}>Revisar coleta<ChevronRight size={13} /></button>}</article>; })}</div><div className="bottom-action">{busy === 'sync' && <div className="progress" role="progressbar" aria-label="Sincronização" aria-valuenow={progress} aria-valuemin="0" aria-valuemax="100"><span style={{ width: `${progress}%` }} /></div>}<Button onClick={synchronize} disabled={!online || !pending.length || !!busy}>{busy === 'sync' ? <LoaderCircle className="spin" size={18} /> : <RefreshCw size={17} />}{busy === 'sync' ? `Sincronizando… ${progress}%` : `Sincronizar ${pending.length} ${pending.length === 1 ? 'registro' : 'registros'}`}</Button><label className="mobile-failure"><input type="checkbox" checked={failNext} onChange={e => setFailNext(e.target.checked)} disabled={!!busy} />Simular falha no próximo envio</label></div></>}
+          {screen === 'queue' && <><Heading title="Pendências de sincronização">Revise os registros salvos neste dispositivo.</Heading><Banner title={online ? 'Conexão disponível' : 'Sem conexão no momento'} type={online ? 'success' : 'warning'} icon={online ? Wifi : WifiOff}>{online ? 'Agora é possível simular o envio dos registros pendentes.' : 'Suas coletas estão seguras. Reconecte para sincronizar.'}</Banner>{!sessionRecords.length && <div className="empty-state"><CheckCheck size={35} /><h3>Nenhuma pendência por aqui</h3><p>Suas coletas salvas aparecerão nesta tela.</p><button className="text-button" onClick={() => navigate('lots')}>Ir para os lotes<ArrowRight size={14} /></button></div>}<div className="queue-list">{[...sessionRecords].reverse().map(record => { const lot = lots.find(l => l.id === record.lotId); return <article className="data-card queue-card" key={record.id}><div className="queue-title"><h3>Lote {record.lotId}</h3><span className={`badge ${record.status}`}>{record.status === 'sending' && <LoaderCircle size={11} className="spin" />}{statusLabels[record.status]}</span></div><p>{lot.address}</p><small>{record.status === 'sent' ? 'Enviado na simulação' : 'Salvo'} em {formatDate(record.status === 'sent' ? record.sentAt : record.createdAt)}</small>{record.error && <div className="queue-error"><AlertCircle size={14} /><span>{record.error}</span></div>}{record.status !== 'sent' && record.status !== 'sending' && <button className="text-button" onClick={() => { setActive(lot); setForm(normalizeForm(lot, record.form)); setFormTab('pessoais'); setErrors({}); setScreen('form'); }}>Revisar coleta<ChevronRight size={13} /></button>}</article>; })}</div><div className="bottom-action">{busy === 'sync' && <div className="progress" role="progressbar" aria-label="Sincronização" aria-valuenow={progress} aria-valuemin="0" aria-valuemax="100"><span style={{ width: `${progress}%` }} /></div>}<Button onClick={synchronize} disabled={!online || !pending.length || !!busy}>{busy === 'sync' ? <LoaderCircle className="spin" size={18} /> : <RefreshCw size={17} />}{busy === 'sync' ? `Sincronizando… ${progress}%` : `Sincronizar ${pending.length} ${pending.length === 1 ? 'registro' : 'registros'}`}</Button><label className="mobile-failure"><input type="checkbox" checked={failNext} onChange={e => setFailNext(e.target.checked)} disabled={!!busy} />Simular falha no próximo envio</label></div></>}
 
           {screen === 'synced' && <><section className="success-panel synced"><span className="success-icon"><Check size={34} strokeWidth={2.5} /></span><h1>Tudo sincronizado</h1><p>{syncedCount} {syncedCount === 1 ? 'registro enviado' : 'registros enviados'} com sucesso na simulação.</p><span className="badge green">0 pendências</span></section><Banner title="Demonstração concluída" type="info">Nenhum dado foi enviado ao sistema real da empresa.</Banner><Button onClick={() => navigate('lots')}>Voltar para a lista de lotes</Button><Button secondary onClick={() => navigate('queue')}>Ver registros enviados</Button></>}
 
@@ -257,7 +268,8 @@ function App() {
     {toast && <div className={`toast ${toast.kind}`} role={toast.kind === 'error' ? 'alert' : 'status'}>{toast.kind === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}<span>{toast.message}</span><button onClick={() => setToast(null)} aria-label="Fechar mensagem"><X size={17} /></button></div>}
     {confirmReset && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="reset-title"><RotateCcw size={27} /><h2 id="reset-title">Começar de novo?</h2><p>Isso remove somente os dados desta simulação neste navegador, incluindo rascunhos e pendências.</p><button className="button primary" onClick={resetDemo}>Reiniciar simulação</button><button autoFocus className="button secondary" onClick={() => setConfirmReset(false)}>Continuar de onde parei</button></div></div>}
     {confirmLogout && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="logout-title"><AlertCircle size={27} /><h2 id="logout-title">Existem dados não sincronizados</h2><p>Ao sair, eles permanecerão protegidos neste dispositivo e voltarão a aparecer no próximo acesso desta conta fictícia.</p><button className="button primary" onClick={signOut}>Sair sem apagar os dados</button><button autoFocus className="button secondary" onClick={() => setConfirmLogout(false)}>Continuar conectado</button></div></div>}
-  </div></FormContext.Provider>;
+    {confirmClearSpouse && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="spouse-title"><AlertCircle size={27} /><h2 id="spouse-title">Remover dados do cônjuge?</h2><p>O novo estado civil não utiliza essa seção. Confirme para apagar os dados já preenchidos.</p><button className="button primary" onClick={confirmCivilChange}>Alterar e remover dados</button><button autoFocus className="button secondary" onClick={() => { setPendingCivil(''); setConfirmClearSpouse(false); }}>Manter estado civil anterior</button></div></div>}
+  </div>;
 }
 
 createRoot(document.getElementById('root')).render(<App />);
