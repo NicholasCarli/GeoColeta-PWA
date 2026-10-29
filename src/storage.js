@@ -1,5 +1,11 @@
 const DB_NAME = 'geocoleta-simulacao-v1';
-export const initialState = () => ({ prepared: {}, records: [], drafts: {}, lastPrepared: null });
+export const demoSession = Object.freeze({
+  userId: 'usuario-demo-001',
+  userName: 'Coletor de demonstração',
+  projectId: 'projeto-demo-centro',
+  projectName: 'Projeto Centro — Demonstração',
+});
+export const initialState = () => ({ session: null, prepared: {}, records: [], drafts: {}, lastPrepared: null });
 let connection;
 let writes = Promise.resolve();
 
@@ -19,7 +25,13 @@ export async function loadState() {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('simulation', 'readonly');
     const read = tx.objectStore('simulation').get('state');
-    read.onsuccess = () => resolve(read.result || initialState());
+    read.onsuccess = () => {
+      const state = { ...initialState(), ...(read.result || {}) };
+      const ownership = { userId: demoSession.userId, projectId: demoSession.projectId };
+      state.prepared = Object.fromEntries(Object.entries(state.prepared).map(([id, lot]) => [id, { ...ownership, ...lot }]));
+      state.records = state.records.map(record => ({ ...ownership, ...record }));
+      resolve(state);
+    };
     read.onerror = () => reject(read.error);
   });
 }
