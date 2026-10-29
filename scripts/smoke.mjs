@@ -41,7 +41,7 @@ try {
   await page.getByLabel('Quadra', { exact: true }).selectOption('12');
   assert.equal(await page.locator('.lot-card').count(), 3);
   await page.screenshot({ path: `${out}/desktop.png`, fullPage: true });
-  await page.getByRole('button', { name: 'Preparar lotes para uso offline' }).click();
+  await page.getByRole('button', { name: 'Baixar dados para uso offline' }).click();
   await page.getByRole('button', { name: 'Baixar dados para uso offline' }).click();
   await page.getByRole('heading', { name: 'Lotes disponíveis' }).waitFor();
   assert.equal(Object.keys((await state()).prepared).length, 3);
