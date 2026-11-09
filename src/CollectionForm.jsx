@@ -27,16 +27,18 @@ function BooleanField({ form, errors, updateField, name, label, onChange }) {
   return <FieldShell name={name} label={label} errors={errors}><select id={name} value={value} onChange={event => { const next = event.target.value === '' ? '' : event.target.value === 'true'; onChange ? onChange(next) : updateField(name, next); }} aria-invalid={!!errors[name]}><option value="">Selecione uma opção</option><option value="true">Sim</option><option value="false">Não</option></select></FieldShell>;
 }
 
-export default function CollectionForm({ lot, form, errors, updateField, formTab, setFormTab, onCivilChange, onSubmit, busy, draftTime, attachDocument }) {
+export default function CollectionForm({ lot, form, errors, updateField, formTab, setFormTab, onCivilChange, onSubmit, onPause, onReopen, onBack, readOnly, collectionLabel, validated, busy, draftTime, attachDocument }) {
   const partner = hasPartner(form.estadoCivil);
   const spouseRequired = form.estadoCivil === 'casado';
   const tabItems = [['pessoais', 'Dados pessoais'], ...(partner ? [['conjuge', spouseRequired ? 'Cônjuge *' : 'Cônjuge (opcional)']] : []), ['imovel', 'Imóvel']];
   const required = spouseRequired ? ' *' : '';
 
   return <>
-    <div className="page-heading"><h1>{`Coleta — Lote ${lot.id}`}</h1><p>REURB · O rascunho é salvo automaticamente neste dispositivo.</p></div>
+    <div className="page-heading"><h1>{`Coleta — Lote ${lot.id}`}</h1><p>{readOnly ? 'REURB · Consulta dos dados salvos.' : 'REURB · O rascunho é salvo automaticamente neste dispositivo.'}</p></div>
+    <div className="collection-notice" role="status"><strong>Coleta: {collectionLabel}</strong>{readOnly && <p>{validated ? 'Validada pela administração. Disponível somente para consulta.' : 'Finalizada e salva. Para alterar os dados, reabra a coleta.'}</p>}</div>
     <div className="form-tabs" role="tablist" aria-label="Seções do formulário">{tabItems.map(([key, label]) => <button type="button" role="tab" aria-selected={formTab === key} key={key} onClick={() => setFormTab(key)}>{label}</button>)}</div>
     <form onSubmit={onSubmit} noValidate>
+      <fieldset className="collection-fields" disabled={readOnly || !!busy}>
       {formTab === 'pessoais' && <div className="form-section form-grid">
         <TextField form={form} errors={errors} updateField={updateField} name="cpfCnpj" label="CPF/CNPJ *" transform={maskCpfCnpj} inputMode="numeric" placeholder="000.000.000-00" />
         <TextField form={form} errors={errors} updateField={updateField} name="nome" label="NOME *" maxLength="120" placeholder="Nome completo" />
@@ -58,7 +60,7 @@ export default function CollectionForm({ lot, form, errors, updateField, formTab
         {form.possuiCnh === true && <TextField form={form} errors={errors} updateField={updateField} name="cnh" label="NÚMERO DA CNH *" transform={value => onlyDigits(value, 11)} inputMode="numeric" placeholder="11 dígitos" />}
         <TextField form={form} errors={errors} updateField={updateField} name="rendaFamiliar" label="RENDA FAMILIAR *" type="number" min="0" step="0.01" inputMode="decimal" />
         <SelectField form={form} errors={errors} updateField={updateField} name="estadoCivil" label="ESTADO CIVIL *" onChange={onCivilChange} options={[["solteiro", "Solteiro(a)"], ["casado", "Casado(a)"], ["divorciado", "Divorciado(a)"], ["viuvo", "Viúvo(a)"], ["uniao_estavel", "União estável"]]} />
-        {partner && <SelectField form={form} errors={errors} updateField={updateField} name="regimeBens" label={`REGIME DE BENS${required}`} options={[["comunhao_parcial", "Comunhão parcial"], ["comunhao_universal", "Comunhão universal"], ["separacao", "Separação de bens"], ["participacao_final", "Participação final nos aquestos"]]} />}
+        {partner && <SelectField form={form} errors={errors} updateField={updateField} name="regimeBens" label="REGIME DE BENS *" options={[["comunhao_parcial", "Comunhão parcial"], ["comunhao_universal", "Comunhão universal"], ["separacao", "Separação de bens"], ["participacao_final", "Participação final nos aquestos"]]} />}
       </div>}
 
       {formTab === 'conjuge' && partner && <div className="form-section form-grid">
@@ -92,9 +94,15 @@ export default function CollectionForm({ lot, form, errors, updateField, formTab
         {form.possuiPendencia === true && <div className="document-field"><strong>DOCUMENTO DA PENDÊNCIA (OPCIONAL)</strong>{form.pendingDocument ? <div className="document-preview"><FileText size={18} /><span>{form.pendingDocument.name}</span><button type="button" onClick={() => updateField('pendingDocument', null)} aria-label="Remover documento"><Trash2 size={16} /></button></div> : <label className="document-upload"><Paperclip size={18} />Anexar imagem ou PDF<input type="file" accept="image/*,application/pdf" onChange={attachDocument} /></label>}</div>}
       </div>}
 
-      <button className="button primary" type="submit" disabled={!!busy}>{busy === 'save' ? <LoaderCircle className="spin" size={18} /> : <HardDrive size={17} />}{busy === 'save' ? 'Finalizando…' : 'Finalizar coleta offline'}</button>
-      <p className="draft-status"><ShieldCheck size={13} />{draftTime ? 'Rascunho salvo neste dispositivo' : 'As alterações serão salvas automaticamente'}</p>
-      {Object.keys(errors).length > 0 && <div className="form-summary" role="alert"><AlertCircle size={16} />Revise os campos destacados antes de finalizar.</div>}
+      </fieldset>
+      {!readOnly && <>
+        <button className="button primary" type="submit" disabled={!!busy}>{busy === 'save' ? <LoaderCircle className="spin" size={18} /> : <HardDrive size={17} />}{busy === 'save' ? 'Finalizando…' : 'Finalizar coleta offline'}</button>
+        <button className="button secondary" type="button" onClick={onPause} disabled={!!busy}>{busy === 'pause' ? 'Salvando rascunho…' : 'Pausar coleta'}</button>
+        <p className="draft-status"><ShieldCheck size={13} />{draftTime ? 'Rascunho salvo neste dispositivo' : 'As alterações serão salvas automaticamente'}</p>
+      </>}
+      {readOnly && !validated && <button className="button secondary" type="button" onClick={onReopen} disabled={!!busy}>Reabrir coleta</button>}
+      {readOnly && <button className="button secondary" type="button" onClick={onBack} disabled={!!busy}>Voltar ao lote</button>}
+      {!readOnly && Object.values(errors).some(Boolean) && <div className="form-summary" role="alert"><AlertCircle size={16} />Revise os campos destacados antes de finalizar.</div>}
     </form>
   </>;
 }

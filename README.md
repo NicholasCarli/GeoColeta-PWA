@@ -22,7 +22,23 @@ A coleta em campo pode acontecer em locais com conexão instável ou inexistente
 - fila de pendências com falha simulada e nova tentativa;
 - prevenção de reenvio de um registro já confirmado;
 - indicadores de conexão e de sincronização;
+- estados da coleta independentes da sincronização: Aguardando consulta, Ativo, Pausado, Finalizado e Validado;
+- pausa e retomada de rascunhos, incluindo depois de reabrir a aplicação offline;
+- consulta de formulários finalizados e reabertura explícita para edição, mantendo o identificador do registro;
+- bloqueio de edição de coletas validadas;
 - interface responsiva baseada no protótipo do Figma.
+
+## Estados da coleta e da sincronização
+
+A situação da coleta é mostrada nos lotes, nos detalhes e no formulário. Iniciar ou retomar deixa a coleta **Ativa**. **Pausar coleta** salva o rascunho imediatamente e deixa a coleta **Pausada**. Sair do formulário pela navegação também salva e pausa. Ao reabrir a aplicação, uma edição interrompida volta como Pausada.
+
+**Finalizar coleta offline** exige um formulário válido, persiste o registro e só então mostra a confirmação. A coleta fica **Finalizada**, enquanto o transporte fica **Pendente**. O envio simulado passa por **Enviando**, **Sincronizado** ou **Erro**, sem mudar o estado da coleta. Sincronizado não significa Validado.
+
+Use **Ver coleta** para consultar dados finalizados, inclusive depois da sincronização. Para editar, escolha **Reabrir coleta**. Enquanto a revisão estiver ativa ou pausada, esse lote fica fora dos próximos envios. Finalizar novamente atualiza o mesmo registro e cria uma nova pendência com o mesmo identificador; não cria uma segunda coleta local.
+
+O lote **012, Vila Nova, quadra 08**, é um exemplo fictício previamente **Validado** pela administração, disponível somente para consulta. O coletor não possui uma ação de validação administrativa. Baixe a área online para consultar o exemplo offline. Se uma versão anterior já tiver trabalho salvo nesse lote, esse trabalho tem prioridade sobre o exemplo.
+
+Dados do formato anterior são preservados no mesmo IndexedDB. O antigo status `sent` passa a `synced`; rascunhos ficam Pausados e registros finalizados conservam dados, anexos, identificador e tentativas.
 
 ## Limites
 
@@ -31,6 +47,10 @@ A coleta em campo pode acontecer em locais com conexão instável ou inexistente
 - o envio para o servidor é simulado;
 - não contém código do frontend ou backend privados da empresa;
 - reproduz somente o formulário e as regras necessários para demonstrar o fluxo acadêmico.
+
+A execução deste protótipo é independente da infraestrutura privada. A futura integração empresarial depende das APIs e da autenticação da empresa e não faz parte desta entrega acadêmica. A prevenção de duplicidade é local; idempotência e conflitos entre dispositivos precisam de tratamento próprio na integração real.
+
+O rascunho automático aguarda aproximadamente 600 ms após a última alteração. Para garantir o salvamento antes de encerrar, use **Pausar coleta** ou a navegação da aplicação e aguarde a confirmação. Fechar abruptamente a aba antes da gravação pode perder as últimas alterações. Limpar os dados do site também remove o armazenamento local. O uso simultâneo em múltiplas abas não faz parte do fluxo validado.
 
 ## Tecnologias
 
@@ -46,7 +66,7 @@ A coleta em campo pode acontecer em locais com conexão instável ou inexistente
 Requer Node.js 18 ou mais recente.
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
@@ -67,10 +87,14 @@ Para executar o teste automatizado, mantenha o preview ativo e use outro termina
 
 ```powershell
 npm run test:form
+npm run test:workflow
 npm run test:smoke
+npm run test:recovery
 ```
 
-O primeiro comando verifica isoladamente as regras do formulário. O teste de fluxo prepara três lotes, salva o formulário e um documento offline, recarrega a aplicação sem rede, simula uma falha de envio e confirma a nova tentativa sem duplicidade.
+Os testes isolados verificam o formulário e as transições dos estados da coleta. O teste de fluxo prepara lotes, pausa e retoma offline, salva um formulário com documento, reabre a coleta sem duplicar registros, simula falha e nova tentativa e verifica a consulta de um Validado sem permitir alterações. O teste de recuperação fecha e reinicia o navegador com o mesmo perfil, abre a aplicação realmente offline e confere a migração dos dados da versão anterior.
+
+Os testes de navegador usam o Chrome instalado no caminho padrão do Windows. Para outro caminho, configure `CHROME_PATH`. A URL padrão do preview é `http://127.0.0.1:4173`; use `SIMULATION_URL` se ela for diferente. Não existe comando de lint configurado neste protótipo.
 
 ## Estrutura principal
 
@@ -78,7 +102,10 @@ O primeiro comando verifica isoladamente as regras do formulário. O teste de fl
 public/              ícones, manifest e assets visuais
 scripts/build.mjs    build e geração do service worker
 scripts/form-validation.mjs teste das regras do formulário
+scripts/collection-workflow.mjs teste dos estados e migração
 scripts/smoke.mjs    teste automatizado do fluxo offline
+scripts/storage-recovery.mjs recuperação após reiniciar o navegador
+src/collectionWorkflow.js transições, bloqueios e migração dos estados
 src/CollectionForm.jsx formulário completo da coleta
 src/formValidation.js regras e máscaras do formulário
 src/form.css          estilos do formulário

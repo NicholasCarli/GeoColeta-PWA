@@ -4,6 +4,54 @@
   gap: 14px;
 }
 
+.collection-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.collection-fields:disabled input,
+.collection-fields:disabled select,
+.collection-fields:disabled textarea {
+  opacity: 1;
+  color: #345b6d;
+  background: #edf2f5;
+  cursor: default;
+}
+
+.collection-fields:disabled .document-preview button { display: none; }
+
+.collection-notice {
+  border: 1px solid #dce4e8;
+  border-radius: 9px;
+  padding: 11px 12px;
+  background: #edf5f8;
+  font-size: 11px;
+  line-height: 1.7;
+  margin-bottom: 14px;
+}
+
+.collection-notice p { margin-top: 4px; font-size: 10px; }
+
+.collection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: #60717b;
+}
+
+.collection-active { color: #007fa8; }
+.collection-paused { color: #976400; }
+.collection-finished { color: #2459a3; }
+.collection-validated { color: #178235; }
+.badge.synced { background: #e8f5ec; color: #178235; }
+.queue-collection { margin: 8px 0; }
+.queue-hint { font-size: 10px; line-height: 1.7; color: #60717b; margin-top: 8px; }
+
 .form-note {
   padding: 11px 12px;
   border-radius: 9px;

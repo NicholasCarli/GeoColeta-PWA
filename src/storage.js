@@ -1,3 +1,5 @@
+import { migrateCollectionState } from './collectionWorkflow.js';
+
 const DB_NAME = 'geocoleta-simulacao-v1';
 export const demoSession = Object.freeze({
   userId: 'usuario-demo-001',
@@ -5,9 +7,24 @@ export const demoSession = Object.freeze({
   projectId: 'projeto-demo-centro',
   projectName: 'Projeto Centro — Demonstração',
 });
-export const initialState = () => ({ session: null, prepared: {}, records: [], drafts: {}, lastPrepared: null });
+export const initialState = () => ({ session: null, prepared: {}, records: [], drafts: {}, collectionStates: { '012': 'validated' }, lastPrepared: null });
 let connection;
 let writes = Promise.resolve();
+
+export function restoreState(stored = {}) {
+  const state = { ...initialState(), ...stored };
+  state.collectionStates = { ...initialState().collectionStates, ...stored.collectionStates };
+  // The validated demo example must never override work saved by an older version.
+  for (const id of Object.keys(initialState().collectionStates)) {
+    if (!stored.collectionStates?.[id] && (state.drafts[id] || state.records.some(record => record.lotId === id))) {
+      delete state.collectionStates[id];
+    }
+  }
+  const ownership = { userId: demoSession.userId, projectId: demoSession.projectId };
+  state.prepared = Object.fromEntries(Object.entries(state.prepared).map(([id, lot]) => [id, { ...ownership, ...lot }]));
+  state.records = state.records.map(record => ({ ...ownership, ...record }));
+  return migrateCollectionState(state);
+}
 
 function database() {
   if (!connection) connection = new Promise((resolve, reject) => {
@@ -25,13 +42,7 @@ export async function loadState() {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('simulation', 'readonly');
     const read = tx.objectStore('simulation').get('state');
-    read.onsuccess = () => {
-      const state = { ...initialState(), ...(read.result || {}) };
-      const ownership = { userId: demoSession.userId, projectId: demoSession.projectId };
-      state.prepared = Object.fromEntries(Object.entries(state.prepared).map(([id, lot]) => [id, { ...ownership, ...lot }]));
-      state.records = state.records.map(record => ({ ...ownership, ...record }));
-      resolve(state);
-    };
+    read.onsuccess = () => resolve(restoreState(read.result));
     read.onerror = () => reject(read.error);
   });
 }
@@ -76,5 +87,19 @@ export const blankForm = lot => ({
   quadra: lot.quadra, lote: lot.id, logradouro: lot.address, matricula: '', valorVenal: '',
   dtInicioMoradia: '', possuiPendencia: '', observacao: '', pendingDocument: null,
 });
+
+// A fixed, fictitious example represents a collection already approved by administration.
+// It does not add an unsent record to the collector's queue or provide an approval action.
+export const validatedForms = {
+  '012': {
+    ...blankForm(lots.find(lot => lot.id === '012')),
+    cpfCnpj: '529.982.247-25', nome: 'Pessoa de Demonstração', dtNascimento: '1990-05-20',
+    rg: '1234567-8', orgaoExpedidor: 'SSP-MT', mae: 'Mãe de Demonstração', sexo: 'feminino',
+    escolaridade: 'medio_completo', naturalidade: 'Cuiabá', nacionalidade: 'Brasileira',
+    celular: '(65) 99999-9999', profissao: 'Professora', possuiCnh: false, email: 'demo@example.com',
+    outroImovel: false, rendaFamiliar: 3500, estadoCivil: 'solteiro', cep: '78000-000',
+    matricula: 'DEMO-012', valorVenal: 120000, possuiPendencia: false,
+  },
+};
 export const formatDate = value => value ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : 'Ainda não realizada';
 export const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
