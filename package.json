@@ -8,6 +8,8 @@
     "build": "node scripts/build.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test:form": "node scripts/form-validation.mjs",
+    "test:workflow": "node scripts/collection-workflow.mjs",
+    "test:recovery": "node scripts/storage-recovery.mjs",
     "test:smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
