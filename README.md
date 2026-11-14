@@ -13,6 +13,7 @@ A coleta em campo pode acontecer em locais com conexão instável ou inexistente
 - autenticação simulada com as credenciais `teste123` / `teste123`, sem armazenamento da senha;
 - cache da aplicação e das fontes para abertura offline;
 - preparação de lotes fictícios para uso offline;
+- início da coleta online sem preparação manual prévia: os dados do lote e o rascunho são gravados juntos no dispositivo antes de abrir o formulário;
 - formulário de coleta completo com rascunho automático e persistência no IndexedDB;
 - CPF e CNPJ com máscara e validação dos dígitos verificadores;
 - dados do cônjuge obrigatórios para casado e opcionais para união estável;
@@ -32,7 +33,9 @@ A coleta em campo pode acontecer em locais com conexão instável ou inexistente
 
 A situação da coleta é mostrada nos lotes, nos detalhes e no formulário. Iniciar ou retomar deixa a coleta **Ativa**. **Pausar coleta** salva o rascunho imediatamente e deixa a coleta **Pausada**. Sair do formulário pela navegação também salva e pausa. Ao reabrir a aplicação, uma edição interrompida volta como Pausada.
 
-**Finalizar coleta offline** exige um formulário válido, persiste o registro e só então mostra a confirmação. A coleta fica **Finalizada**, enquanto o transporte fica **Pendente**. O envio simulado passa por **Enviando**, **Sincronizado** ou **Erro**, sem mudar o estado da coleta. Sincronizado não significa Validado.
+**Finalizar coleta** funciona com ou sem internet: exige um formulário válido, persiste o registro e só então mostra a confirmação. A coleta fica **Finalizada**, enquanto o transporte fica **Pendente**. O envio simulado passa por **Enviando**, **Sincronizado** ou **Erro**, sem mudar o estado da coleta. Sincronizado não significa Validado.
+
+Com conexão, abra um lote e use **Iniciar coleta**, sem precisar baixá-lo primeiro. O protótipo guarda os dados fictícios desse lote e o rascunho na mesma gravação local, vinculados à sessão e ao projeto. Se a conexão cair, a coleta pode continuar. Sem conexão, somente lotes já armazenados no dispositivo podem ser iniciados. A preparação manual de uma área continua disponível para planejar o trabalho de campo. Finalizar online também gera uma pendência local; a sincronização permanece manual e simulada.
 
 Use **Ver coleta** para consultar dados finalizados, inclusive depois da sincronização. Para editar, escolha **Reabrir coleta**. Enquanto a revisão estiver ativa ou pausada, esse lote fica fora dos próximos envios. Finalizar novamente atualiza o mesmo registro e cria uma nova pendência com o mesmo identificador; não cria uma segunda coleta local.
 

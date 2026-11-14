@@ -96,7 +96,7 @@ export default function CollectionForm({ lot, form, errors, updateField, formTab
 
       </fieldset>
       {!readOnly && <>
-        <button className="button primary" type="submit" disabled={!!busy}>{busy === 'save' ? <LoaderCircle className="spin" size={18} /> : <HardDrive size={17} />}{busy === 'save' ? 'Finalizando…' : 'Finalizar coleta offline'}</button>
+        <button className="button primary" type="submit" disabled={!!busy}>{busy === 'save' ? <LoaderCircle className="spin" size={18} /> : <HardDrive size={17} />}{busy === 'save' ? 'Finalizando…' : 'Finalizar coleta'}</button>
         <button className="button secondary" type="button" onClick={onPause} disabled={!!busy}>{busy === 'pause' ? 'Salvando rascunho…' : 'Pausar coleta'}</button>
         <p className="draft-status"><ShieldCheck size={13} />{draftTime ? 'Rascunho salvo neste dispositivo' : 'As alterações serão salvas automaticamente'}</p>
       </>}
