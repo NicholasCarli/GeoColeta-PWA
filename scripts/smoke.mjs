@@ -10,7 +10,7 @@ const context = await browser.newContext({ viewport: { width: 1360, height: 1000
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));
-const state = () => page.evaluate(() => new Promise((resolve, reject) => {
+const state = (target = page) => target.evaluate(() => new Promise((resolve, reject) => {
   const request = indexedDB.open('geocoleta-simulacao-v1', 1);
   request.onsuccess = () => {
     const db = request.result;
@@ -56,7 +56,7 @@ try {
   await page.getByRole('button', { name: /Rua Cel. Virgílio/ }).click();
   await page.getByRole('button', { name: 'Iniciar coleta' }).click();
   assert.equal((await state()).collectionStates['001'], 'active');
-  await page.getByRole('button', { name: 'Finalizar coleta offline' }).click();
+  await page.getByRole('button', { name: 'Finalizar coleta', exact: true }).click();
   await page.getByText('Informe o CPF ou CNPJ.').waitFor();
   assert.equal((await state()).records.length, 0);
   await page.locator('#nome').fill('Rascunho de Teste');
@@ -108,7 +108,7 @@ try {
   await page.locator('.document-upload input').setInputFiles('public/icon-192.png');
   await page.locator('.document-preview').waitFor();
   await page.screenshot({ path: `${out}/form.png`, fullPage: true });
-  await page.getByRole('button', { name: 'Finalizar coleta offline' }).click();
+  await page.getByRole('button', { name: 'Finalizar coleta', exact: true }).click();
   await page.getByRole('heading', { name: 'Registro salvo' }).waitFor();
   assert.equal((await state()).records.length, 1);
   assert.equal((await state()).records[0].userId, 'usuario-demo-001');
@@ -136,7 +136,7 @@ try {
   assert.ok(await page.getByRole('button', { name: 'Sincronizar 0 registros' }).isDisabled());
   await page.getByRole('button', { name: 'Retomar coleta' }).click();
   assert.equal(await page.locator('#nome').inputValue(), 'Maria Revisada');
-  await page.getByRole('button', { name: 'Finalizar coleta offline' }).click();
+  await page.getByRole('button', { name: 'Finalizar coleta', exact: true }).click();
   await page.getByRole('heading', { name: 'Registro salvo' }).waitFor();
   assert.equal((await state()).records.length, 1);
   assert.equal((await state()).records[0].id, recordId);
@@ -190,7 +190,7 @@ try {
   assert.equal(await page.locator('#nome').inputValue(), 'Pessoa de Demonstração');
   assert.equal(await page.getByRole('button', { name: 'Reabrir coleta' }).count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Pausar coleta', exact: true }).count(), 0);
-  assert.equal(await page.getByRole('button', { name: 'Finalizar coleta offline' }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Finalizar coleta', exact: true }).count(), 0);
   await page.locator('form').dispatchEvent('submit');
   await page.getByRole('tab', { name: 'Imóvel' }).click();
   assert.ok(await page.locator('#matricula').isDisabled());
@@ -205,6 +205,72 @@ try {
   await page.getByRole('heading', { name: 'Acessar demonstração' }).waitFor();
   assert.equal((await state()).session, null);
   console.log('OK — primeiro acesso exige rede e saída oculta os dados sem apagá-los');
+
+  // A fresh device can start online without the manual area-download step.
+  const onlineContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const onlinePage = await onlineContext.newPage();
+  onlinePage.on('pageerror', error => errors.push(error.message));
+  await onlinePage.goto(base);
+  await onlinePage.getByPlaceholder('Digite o usuário').fill('teste123');
+  await onlinePage.getByPlaceholder('Digite a senha').fill('teste123');
+  await onlinePage.getByRole('button', { name: 'Entrar na demonstração' }).click();
+  await onlinePage.getByRole('heading', { name: 'Lotes disponíveis' }).waitFor();
+  await onlinePage.evaluate(async () => { await navigator.serviceWorker.ready; });
+  await onlinePage.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  assert.equal(Object.keys((await state(onlinePage)).prepared).length, 0);
+  await onlinePage.getByLabel('Quadra', { exact: true }).selectOption('13');
+  await onlinePage.getByRole('button', { name: /Rua das Acácias/ }).click();
+  const onlineStart = onlinePage.getByRole('button', { name: 'Iniciar coleta', exact: true });
+  assert.ok(await onlineStart.isEnabled());
+  await onlinePage.getByText('Coleta disponível online', { exact: true }).waitFor();
+  await onlinePage.screenshot({ path: `${out}/online-start.png`, fullPage: true });
+  await onlineContext.setOffline(true);
+  await onlinePage.locator('.connection-bar.offline').waitFor();
+  assert.ok(await onlineStart.isDisabled());
+  assert.equal(Object.keys((await state(onlinePage)).prepared).length, 0);
+  await onlineContext.setOffline(false);
+  await onlinePage.locator('.connection-bar.online').waitFor();
+  await onlineStart.click();
+  await onlinePage.getByRole('heading', { name: 'Coleta — Lote 004', exact: true }).waitFor();
+  const startedOnline = await state(onlinePage);
+  assert.deepEqual(Object.keys(startedOnline.prepared), ['004']);
+  assert.equal(startedOnline.prepared['004'].userId, 'usuario-demo-001');
+  assert.equal(startedOnline.prepared['004'].projectId, 'projeto-demo-centro');
+  assert.ok(startedOnline.prepared['004'].preparedAt);
+  assert.ok(startedOnline.drafts['004']);
+  assert.equal(startedOnline.collectionStates['004'], 'active');
+  await onlinePage.locator('#nome').fill('Coleta iniciada online');
+  await onlineContext.setOffline(true);
+  await onlinePage.getByRole('button', { name: 'Pausar coleta', exact: true }).click();
+  await onlinePage.getByRole('heading', { name: 'Lote 004', exact: true }).waitFor();
+  await onlinePage.reload();
+  await onlinePage.getByRole('heading', { name: 'Lotes disponíveis' }).waitFor();
+  assert.equal(await onlinePage.locator('.lot-card').count(), 1);
+  await onlinePage.getByRole('button', { name: /Rua das Acácias/ }).click();
+  await onlinePage.getByRole('button', { name: 'Retomar coleta', exact: true }).click();
+  assert.equal(await onlinePage.locator('#nome').inputValue(), 'Coleta iniciada online');
+  await onlinePage.screenshot({ path: `${out}/online-resumed-offline.png`, fullPage: true });
+  console.log('OK — iniciar online prepara somente o lote atual; queda de rede e reload preservam a coleta');
+
+  await onlineContext.setOffline(false);
+  await onlinePage.locator('.connection-bar.online').waitFor();
+  const onlineValues = { cpfCnpj: '52998224725', dtNascimento: '1990-05-20', email: 'teste@example.com', rg: '1234567-8', orgaoExpedidor: 'SSP-MT', mae: 'Mãe de Teste', naturalidade: 'Cuiabá', nacionalidade: 'Brasileira', celular: '65999999999', profissao: 'Professora', rendaFamiliar: '3500' };
+  for (const [id, value] of Object.entries(onlineValues)) await onlinePage.locator('#' + id).fill(value);
+  for (const [id, value] of Object.entries({ sexo: 'feminino', escolaridade: 'medio_completo', outroImovel: 'false', possuiCnh: 'false', estadoCivil: 'solteiro' })) await onlinePage.locator('#' + id).selectOption(value);
+  await onlinePage.getByRole('tab', { name: 'Imóvel' }).click();
+  for (const [id, value] of Object.entries({ cep: '78000000', matricula: 'DEMO-ONLINE-004', valorVenal: '120000' })) await onlinePage.locator('#' + id).fill(value);
+  await onlinePage.locator('#possuiPendencia').selectOption('false');
+  await onlinePage.getByRole('button', { name: 'Finalizar coleta', exact: true }).click();
+  await onlinePage.getByRole('heading', { name: 'Registro salvo', exact: true }).waitFor();
+  const finishedOnline = await state(onlinePage);
+  assert.equal(finishedOnline.records.length, 1);
+  assert.equal(finishedOnline.records[0].lotId, '004');
+  assert.equal(finishedOnline.records[0].status, 'pending');
+  assert.equal(finishedOnline.collectionStates['004'], 'finished');
+  assert.equal(finishedOnline.drafts['004'], undefined);
+  await onlinePage.screenshot({ path: `${out}/online-saved.png`, fullPage: true });
+  await onlineContext.close();
+  console.log('OK — coleta finalizada online salva no dispositivo e aguarda sincronização manual');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   for (const f of await readdir('public/assets')) assert.ok((await stat(`public/assets/${f}`)).size > 0);
   assert.deepEqual(errors, []);

@@ -122,7 +122,7 @@ function App() {
     if (lock.current || busy) return;
     const current = dataRef.current;
     const viewOnly = isReadOnly(collectionStatus(current, lot.id)) && !reopen;
-    if (!current.prepared[lot.id] && !(viewOnly && online)) return notify('Baixe os dados deste lote antes de iniciar a coleta.', 'error');
+    if (!current.prepared[lot.id] && !onlineRef.current) return notify('Este lote ainda não está disponível offline. Conecte-se para iniciar a coleta.', 'error');
     lock.current = true; setBusy('open');
     try {
       let stored;
@@ -130,7 +130,18 @@ function App() {
         stored = recordForLot(current, lot.id)?.form || validatedForms[lot.id];
         if (!stored) throw new Error('O formulário desta coleta não está disponível neste dispositivo.');
       } else {
-        const next = await commit(s => startCollection(s, lot.id, blankForm(lot), reopen));
+        const next = await commit(s => {
+          let available = s;
+          if (!s.prepared[lot.id]) {
+            if (!onlineRef.current) throw new Error('Conecte-se para carregar os dados deste lote.');
+            const preparedAt = new Date().toISOString();
+            available = {
+              ...s, lastPrepared: preparedAt,
+              prepared: { ...s.prepared, [lot.id]: { ...lot, userId: s.session.userId, projectId: s.session.projectId, preparedAt } },
+            };
+          }
+          return startCollection(available, lot.id, blankForm(lot), reopen);
+        });
         stored = next.drafts[lot.id];
       }
       setActive(lot); setForm(normalizeForm(lot, stored));
@@ -303,7 +314,7 @@ function App() {
 
           {screen === 'detail' && active && <>
             <Heading title={'Lote ' + active.id} back={() => navigate('lots')}>{active.address}</Heading>
-            {data.prepared[active.id] ? <Banner title="Disponível offline" icon={HardDrive}>Esses dados foram preparados neste dispositivo.</Banner> : <Banner title="Este lote ainda não foi preparado" type="warning">Baixe os dados na lista para iniciar a coleta ou consultá-la sem internet.</Banner>}
+            {data.prepared[active.id] ? <Banner title="Disponível offline" icon={HardDrive}>Você pode coletar com ou sem internet. Os dados deste lote estão neste dispositivo.</Banner> : online ? <Banner title="Coleta disponível online" type="info">Ao iniciar, os dados deste lote serão salvos no dispositivo para continuar mesmo se a conexão cair.</Banner> : <Banner title="Este lote ainda não está disponível offline" type="warning">Conecte-se para iniciar a coleta. Antes de sair para uma área sem sinal, baixe os lotes que pretende visitar.</Banner>}
             <section className="data-card lot-facts"><dl>{[
               ['Bairro', active.bairro], ['Quadra', 'Q-' + active.quadra], ['Inscrição', active.inscription],
               ['Situação da coleta', collectionLabels[activeStatus]], ['Sincronização', activeRecord ? statusLabels[activeRecord.status] : activeStatus === 'validated' ? 'Sem pendência local' : 'Sem registro finalizado'],
@@ -311,7 +322,7 @@ function App() {
             <div className="location-placeholder"><MapPin size={23} /><div><strong>{active.address}, {active.number}</strong><p>Localização textual disponível. O mapa não faz parte desta simulação.</p></div></div>
             {data.drafts[active.id] && <Banner type="warning" title="Você tem um rascunho">Continue de onde parou. Os campos foram mantidos.</Banner>}
             {activeStatus === 'validated' && <Banner title="Coleta validada">Esta coleta já foi validada pela administração e está disponível somente para consulta.</Banner>}
-            <div className="bottom-action"><Button onClick={() => openForm()} disabled={!!busy || (!data.prepared[active.id] && !(readOnly && online))}>
+            <div className="bottom-action"><Button onClick={() => openForm()} disabled={!!busy || (!data.prepared[active.id] && !online)}>
               {readOnly ? 'Ver coleta' : activeStatus === 'paused' ? 'Retomar coleta' : activeStatus === 'active' ? 'Continuar coleta' : 'Iniciar coleta'}<ArrowRight size={17} />
             </Button></div>
           </>}
