@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { initialState, demoSession, lots, validatedForms, restoreState } from '../src/storage.js';
-import { collectionStatus, canSynchronize, startCollection, saveDraft, finishCollection, migrateCollectionState } from '../src/collectionWorkflow.js';
+import { collectionStatus, canSynchronize, isReadOnly, startCollection, saveDraft, finishCollection, migrateCollectionState } from '../src/collectionWorkflow.js';
 
 const lot = lots[0];
 const form = { ...validatedForms['012'], lote: lot.id, nome: 'Pessoa de Teste' };
@@ -69,6 +69,12 @@ assert.equal(interrupted.records[0].status, 'error');
 assert.match(interrupted.records[0].error, /interrompido/);
 assert.equal(canSynchronize(interrupted, interrupted.records[0]), false);
 
+const returned = { ...state, collectionStates: { ...state.collectionStates, [lot.id]: 'returned' }, prepared: { ...state.prepared, [lot.id]: lot } };
+assert.equal(collectionStatus(returned, lot.id), 'returned');
+assert.equal(isReadOnly(returned.collectionStates[lot.id]), false);
+assert.equal(collectionStatus(startCollection(returned, lot.id, {}), lot.id), 'active');
+
 console.log('OK — iniciar, pausar, retomar, finalizar e reabrir sem duplicar registros');
 console.log('OK — somente finalizados entram no envio; validados permanecem bloqueados');
 console.log('OK — migração preserva dados e recupera edição/envio interrompidos');
+console.log('OK — coleta devolvida pode ser corrigida e finalizada novamente');

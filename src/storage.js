@@ -37,22 +37,22 @@ function database() {
   return connection;
 }
 
-export async function loadState() {
+export async function loadState(key = 'state') {
   const db = await database();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('simulation', 'readonly');
-    const read = tx.objectStore('simulation').get('state');
+    const read = tx.objectStore('simulation').get(key);
     read.onsuccess = () => resolve(restoreState(read.result));
     read.onerror = () => reject(read.error);
   });
 }
 
-export function saveState(state) {
+export function saveState(state, key = 'state') {
   const operation = writes.catch(() => {}).then(async () => {
     const db = await database();
     await new Promise((resolve, reject) => {
       const tx = db.transaction('simulation', 'readwrite');
-      tx.objectStore('simulation').put(state, 'state');
+      tx.objectStore('simulation').put(state, key);
       tx.oncomplete = resolve;
       tx.onerror = () => reject(new Error('Não foi possível salvar. Verifique o espaço disponível no dispositivo.'));
       tx.onabort = () => reject(new Error('O salvamento foi interrompido. Seus campos foram mantidos.'));
