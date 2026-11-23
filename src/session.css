@@ -25,12 +25,6 @@
   color: #022f40;
 }
 
-.auth-label {
-  font-size: 8px;
-  letter-spacing: 1px;
-  color: #60717b;
-}
-
 .auth-card h1 {
   font-size: 24px;
   color: #022f40;
@@ -39,11 +33,6 @@
 .auth-card > p {
   font-size: 11px;
   line-height: 1.8;
-}
-
-.auth-card > small {
-  font-size: 9px;
-  text-align: center;
 }
 
 .auth-fields {
@@ -90,4 +79,21 @@
 
 .session-card {
   background: #fff;
+}
+
+.review-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.review-card > strong {
+  color: #1f435a;
+  font-size: 11px;
 }

@@ -1,20 +1,49 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Download, Grid2X2, RefreshCw, UserRound, Wifi, WifiOff, Smartphone, MapPin, ChevronRight, HardDrive, CloudUpload, AlertCircle, X, Trash2, RotateCcw, CheckCheck, LoaderCircle, ShieldCheck, Info } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Download, Grid2X2, RefreshCw, UserRound, Wifi, WifiOff, MapPin, ChevronRight, HardDrive, CloudUpload, AlertCircle, X, Trash2, RotateCcw, CheckCheck, LoaderCircle, Info, ClipboardCheck } from 'lucide-react';
 import '@fontsource/poppins/400.css';
 import '@fontsource/poppins/500.css';
 import '@fontsource/poppins/600.css';
 import '@fontsource/poppins/700.css';
-import { lots, demoSession, initialState, loadState, saveState, blankForm, validatedForms, formatDate, delay } from './storage';
+import { initialState, loadState, saveState, blankForm, validatedForms, formatDate, delay } from './storage';
 import { collectionLabels, syncLabels, collectionStatus, recordForLot, isReadOnly, canSynchronize, startCollection, saveDraft, finishCollection } from './collectionWorkflow';
 import CollectionForm from './CollectionForm';
 import { clearSpouse, hasPartner, hasSpouseData, validateCollectionForm } from './formValidation';
+import { authenticate, endAuthentication, loadRemoteCollections, loadRemoteContext, restoreAuthentication, returnRemoteCollection, synchronizeCollection, validateRemoteCollection } from './supabase';
 import './styles.css';
 import './session.css';
 
 const statusLabels = syncLabels;
-const pageSubtitles = { lots: 'Consulta e coleta de dados em campo', prepare: 'Download dos dados necessários', detail: 'Dados do lote e informações da coleta', form: 'Registro de informações em campo', saved: 'Registro armazenado no dispositivo', queue: 'Fila de registros locais', synced: 'Sincronização de demonstração concluída', device: 'Seus dados, neste dispositivo' };
-const screenDots = { lots: 0, prepare: 3, detail: 4, form: 5, saved: 6, queue: 7, synced: 8, device: 0 };
+const pageSubtitles = { lots: 'Consulta e coleta de dados em campo', prepare: 'Download dos dados necessários', detail: 'Dados do lote e informações da coleta', form: 'Registro de informações em campo', saved: 'Registro armazenado no dispositivo', queue: 'Fila de registros locais', synced: 'Sincronização concluída', validation: 'Análise das coletas sincronizadas', device: 'Seus dados, neste dispositivo' };
+const screenDots = { lots: 0, prepare: 3, detail: 4, form: 5, saved: 6, queue: 7, synced: 8, validation: 0, device: 0 };
+const remoteStatus = { Aguardando: 'waiting', Ativo: 'active', Pausado: 'paused', Finalizado: 'finished', Validado: 'validated', Correcao: 'returned' };
+const remoteCollectionStatus = { Finalizada: 'finished', Validada: 'validated', Devolvida: 'returned' };
+const reviewRoles = ['WCOGEO_ADMIN', 'WCOGEO_ANALISTA', 'PREFEITURA_ADMIN'];
+const reviewLabels = { Finalizada: 'Aguardando validação', Validada: 'Validada', Devolvida: 'Devolvida para correção' };
+const permissionLabels = { WCOGEO_ADMIN: 'Administrador WCOGEO', WCOGEO_ANALISTA: 'Analista WCOGEO', WCOGEO_USUARIO: 'Usuário WCOGEO', PREFEITURA_ADMIN: 'Administrador da prefeitura', PREFEITURA_USUARIO: 'Usuário da prefeitura' };
+const applyRemoteContext = (stored, context) => {
+  const serverStates = Object.fromEntries(context.lots.filter(lot => lot.status !== 'Aguardando').map(lot => [lot.id, remoteStatus[lot.status]]));
+  const collectionStates = { ...serverStates, ...stored.collectionStates };
+  if (reviewRoles.includes(context.session.permission)) return { ...stored, session: context.session, collectionStates };
+  const records = [...stored.records];
+  const prepared = { ...stored.prepared };
+  for (const remote of context.collections || []) {
+    const localIndex = records.findIndex(record => record.lotId === remote.lotId && record.userId === context.session.userId && record.projectId === context.session.projectId);
+    const local = records[localIndex];
+    if (stored.drafts[remote.lotId] || ['pending', 'sending', 'error'].includes(local?.status)) continue;
+    const record = {
+      id: remote.id, userId: context.session.userId, projectId: context.session.projectId,
+      lotId: remote.lotId, form: remote.form, status: 'synced', createdAt: remote.createdAt,
+      updatedAt: remote.updatedAt, attempts: local?.attempts || 0, error: '', sentAt: remote.sentAt,
+      remoteStatus: remote.remoteStatus, validatedAt: remote.validatedAt,
+      returnedAt: remote.returnedAt, returnReason: remote.returnReason,
+    };
+    if (localIndex >= 0) records[localIndex] = record; else records.push(record);
+    prepared[remote.lotId] = { ...remote.lot, userId: context.session.userId, projectId: context.session.projectId, preparedAt: remote.sentAt };
+    collectionStates[remote.lotId] = remoteCollectionStatus[remote.remoteStatus];
+  }
+  return { ...stored, session: context.session, collectionStates, records, prepared };
+};
 const normalizeForm = (lot, stored = {}) => ({ ...blankForm(lot), ...stored, nome: stored.nome || stored.name || '', possuiCnh: stored.possuiCnh ?? (stored.cnh ? true : '') });
 const Button = ({ children, secondary, className = '', ...props }) => <button className={`button ${secondary ? 'secondary' : 'primary'} ${className}`} {...props}>{children}</button>;
 const Banner = ({ title, children, type = 'success', icon: Icon = Info }) => <div className={`banner ${type}`}><Icon size={18} /><div><strong>{title}</strong>{children && <p>{children}</p>}</div></div>;
@@ -25,10 +54,12 @@ function App() {
   const [data, setData] = useState(initialState);
   const dataRef = useRef(data);
   const [ready, setReady] = useState(false);
+  const [lots, setLots] = useState([]);
+  const [remoteCollections, setRemoteCollections] = useState([]);
   const [screen, setScreen] = useState('lots');
-  const [bairro, setBairro] = useState('Centro');
+  const [bairro, setBairro] = useState('');
   const [quadra, setQuadra] = useState('');
-  const [selected, setSelected] = useState(lots.filter(l => l.bairro === 'Centro').map(l => l.id));
+  const [selected, setSelected] = useState([]);
   const [active, setActive] = useState(null);
   const [form, setForm] = useState(null);
   const [formTab, setFormTab] = useState('pessoais');
@@ -41,10 +72,9 @@ function App() {
   const [busy, setBusy] = useState('');
   const lock = useRef(false);
   const [progress, setProgress] = useState(0);
-  const [failNext, setFailNext] = useState(false);
   const [toast, setToast] = useState(null);
   const [storageError, setStorageError] = useState('');
-  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [authError, setAuthError] = useState('');
   const [draftTime, setDraftTime] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -53,31 +83,64 @@ function App() {
   const [pendingCivil, setPendingCivil] = useState('');
   const [installEvent, setInstallEvent] = useState(null);
   const [syncedCount, setSyncedCount] = useState(0);
+  const [reviewStatus, setReviewStatus] = useState('Finalizada');
+  const [reviewBairro, setReviewBairro] = useState('');
+  const [reviewCollection, setReviewCollection] = useState(null);
+  const [returnReason, setReturnReason] = useState('');
+  const [confirmReturn, setConfirmReturn] = useState(false);
   const mainRef = useRef(null);
+  const storageKey = useRef('state');
   const activeStatus = active ? collectionStatus(data, active.id) : 'waiting';
   const readOnly = isReadOnly(activeStatus);
   const activeRecord = active ? recordForLot(data, active.id) : null;
 
   const notify = (message, kind = 'success') => setToast({ message, kind, id: Date.now() });
   useEffect(() => {
-    loadState().then(async stored => {
-      await saveState(stored);
-      dataRef.current = stored; setData(stored); setReady(true);
-    }).catch(e => { setStorageError(e.message); setReady(true); });
+    let activeEffect = true;
+    async function initialize() {
+      try {
+        const user = await restoreAuthentication();
+        if (!activeEffect || !user) return;
+        storageKey.current = `state:${user.id}`;
+        const stored = await loadState(storageKey.current);
+        let next = stored;
+        if (navigator.onLine) {
+          const context = await loadRemoteContext(user);
+          if (!activeEffect) return;
+          setLots(context.lots);
+          setRemoteCollections(context.collections);
+          const firstBairro = context.lots[0]?.bairro || '';
+          setBairro(firstBairro);
+          setSelected(context.lots.filter(lot => lot.bairro === firstBairro).map(lot => lot.id));
+          next = applyRemoteContext(stored, context);
+        } else if (stored.session) {
+          const offlineLots = Object.values(stored.prepared);
+          const firstBairro = offlineLots[0]?.bairro || '';
+          setBairro(firstBairro);
+          setSelected(offlineLots.filter(lot => lot.bairro === firstBairro).map(lot => lot.id));
+        }
+        await saveState(next, storageKey.current);
+        if (!activeEffect) return;
+        dataRef.current = next;
+        setData(next);
+      } catch (error) { if (activeEffect) setStorageError(error.message); }
+      finally { if (activeEffect) setReady(true); }
+    }
+    initialize();
     const network = () => setRealOnline(navigator.onLine);
     const install = e => { e.preventDefault(); setInstallEvent(e); };
     window.addEventListener('online', network); window.addEventListener('offline', network);
     window.addEventListener('beforeinstallprompt', install);
-    return () => { window.removeEventListener('online', network); window.removeEventListener('offline', network); window.removeEventListener('beforeinstallprompt', install); };
+    return () => { activeEffect = false; window.removeEventListener('online', network); window.removeEventListener('offline', network); window.removeEventListener('beforeinstallprompt', install); };
   }, []);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 4800); return () => clearTimeout(t); }, [toast]);
-  useEffect(() => { mainRef.current?.scrollTo(0, 0); }, [screen]);
+  useEffect(() => { mainRef.current?.scrollTo(0, 0); }, [screen, reviewCollection?.id]);
 
   async function commit(change) {
     const previous = dataRef.current;
     const next = change(previous);
     dataRef.current = next;
-    try { await saveState(next); setData(dataRef.current); return next; }
+    try { await saveState(next, storageKey.current); setData(dataRef.current); return next; }
     catch (error) { if (dataRef.current === next) dataRef.current = previous; throw error; }
   }
 
@@ -93,17 +156,22 @@ function App() {
   }, [form, screen, busy, active, readOnly]);
 
   const session = data.session;
+  const canReview = reviewRoles.includes(session?.permission);
   const sessionRecords = data.records.filter(r => !session || (r.userId === session.userId && r.projectId === session.projectId));
   const pending = sessionRecords.filter(r => canSynchronize(data, r));
   const prepared = Object.values(data.prepared);
   const source = online ? lots : prepared;
   const visible = source.filter(l => (!bairro || l.bairro === bairro) && (!quadra || l.quadra === quadra));
   const chosen = visible.filter(l => selected.includes(l.id));
-  const quadras = [...new Set(lots.filter(l => !bairro || l.bairro === bairro).map(l => l.quadra))];
-  const step = ['prepare'].includes(screen) ? 1 : ['detail', 'form'].includes(screen) ? 2 : ['saved', 'queue'].includes(screen) ? 3 : screen === 'synced' ? 4 : 0;
+  const quadras = [...new Set(source.filter(l => !bairro || l.bairro === bairro).map(l => l.quadra))];
+  const reviewItems = remoteCollections.filter(item => (!reviewStatus || item.remoteStatus === reviewStatus) && (!reviewBairro || item.lot.bairro === reviewBairro));
 
   async function navigate(target) {
     if (busy || lock.current) return;
+    if (target === 'validation') {
+      setReviewCollection(null);
+      mainRef.current?.scrollTo(0, 0);
+    }
     if (screen === 'form' && form && active && !readOnly) {
       lock.current = true; setBusy('pause');
       try { await commit(s => saveDraft(s, active.id, form, true)); setScreen(target); }
@@ -115,7 +183,7 @@ function App() {
   }
   function changeFilter(nextBairro, nextQuadra) {
     setBairro(nextBairro); setQuadra(nextQuadra);
-    setSelected(lots.filter(l => (!nextBairro || l.bairro === nextBairro) && (!nextQuadra || l.quadra === nextQuadra)).map(l => l.id));
+    setSelected(source.filter(l => (!nextBairro || l.bairro === nextBairro) && (!nextQuadra || l.quadra === nextQuadra)).map(l => l.id));
   }
   function openLot(lot) { setActive(lot); setScreen('detail'); }
   async function openForm(lot = active, reopen = false) {
@@ -211,22 +279,39 @@ function App() {
     const queue = dataRef.current.records.filter(r => r.userId === session.userId && r.projectId === session.projectId && canSynchronize(dataRef.current, r));
     if (!queue.length) return;
     lock.current = true; setBusy('sync'); setProgress(0);
-    let success = 0; let shouldFail = failNext;
-    setFailNext(false);
+    let success = 0;
     try {
       for (const [index, record] of queue.entries()) {
         if (!onlineRef.current) break;
         await commit(s => ({ ...s, records: s.records.map(r => r.id === record.id ? { ...r, status: 'sending', attempts: r.attempts + 1, error: '' } : r) }));
-        await delay(850);
-        const error = !onlineRef.current ? 'Conexão interrompida. O registro continua neste dispositivo.' : shouldFail ? 'O servidor simulado não respondeu. Tente novamente.' : '';
-        shouldFail = false;
+        let error = '';
+        try {
+          await synchronizeCollection(record, lots.find(lot => lot.id === record.lotId) || dataRef.current.prepared[record.lotId]);
+        } catch (syncError) { error = syncError.message; }
         await commit(s => ({ ...s, records: s.records.map(r => r.id === record.id ? { ...r, status: error ? 'error' : 'synced', error, sentAt: error ? null : new Date().toISOString() } : r) }));
-        if (!error) success++;
+        if (!error) success += 1;
         setProgress(Math.round((index + 1) / queue.length * 100));
       }
       const remaining = dataRef.current.records.filter(r => r.userId === session.userId && r.projectId === session.projectId && canSynchronize(dataRef.current, r));
+      if (onlineRef.current) setRemoteCollections(await loadRemoteCollections(session.projectId));
       if (!remaining.length) { setSyncedCount(success); setScreen('synced'); }
       else notify(`${success} enviado(s). ${remaining.length} registro(s) preservado(s) para nova tentativa.`, 'error');
+    } catch (error) { notify(error.message, 'error'); }
+    finally { setBusy(''); lock.current = false; }
+  }
+
+  async function reviewCurrent(action) {
+    if (!reviewCollection || !canReview || lock.current || !onlineRef.current) return;
+    if (action === 'return' && (returnReason.trim().length < 5 || returnReason.trim().length > 500)) return notify('Informe um motivo entre 5 e 500 caracteres.', 'error');
+    lock.current = true; setBusy('review');
+    try {
+      if (action === 'validate') await validateRemoteCollection(reviewCollection.id);
+      else await returnRemoteCollection(reviewCollection.id, returnReason);
+      const refreshed = await loadRemoteCollections(session.projectId);
+      setRemoteCollections(refreshed);
+      setReviewCollection(refreshed.find(item => item.id === reviewCollection.id) || null);
+      setConfirmReturn(false); setReturnReason('');
+      notify(action === 'validate' ? 'Coleta validada com sucesso.' : reviewCollection.remoteStatus === 'Validada' ? 'Coleta reaberta para correção.' : 'Coleta devolvida ao coletor para correção.');
     } catch (error) { notify(error.message, 'error'); }
     finally { setBusy(''); lock.current = false; }
   }
@@ -249,45 +334,47 @@ function App() {
     catch (e) { notify(e.message, 'error'); }
   }
   async function resetDemo() {
-    try { await commit(() => ({ ...initialState(), session })); setConfirmReset(false); setSimOffline(false); changeFilter('Centro', ''); setScreen('lots'); notify('Simulação reiniciada.'); }
+    const firstBairro = lots[0]?.bairro || '';
+    try { await commit(() => ({ ...initialState(), session })); setConfirmReset(false); setSimOffline(false); changeFilter(firstBairro, ''); setScreen('lots'); notify('Dados locais reiniciados.'); }
     catch (e) { notify(e.message, 'error'); }
   }
 
   async function signIn() {
     if (!realOnline || lock.current) return;
-    if (credentials.username !== 'teste123' || credentials.password !== 'teste123') {
-      setAuthError('Usuário ou senha inválidos. Use as credenciais de demonstração.');
-      return;
-    }
+    if (!credentials.email.trim() || !credentials.password) return setAuthError('Informe o e-mail e a senha.');
     lock.current = true; setBusy('signin');
-    try { await delay(350); await commit(s => ({ ...s, session: demoSession })); setAuthError(''); setScreen('lots'); }
-    catch (e) { setStorageError(e.message); }
+    try {
+      const context = await authenticate(credentials.email.trim(), credentials.password);
+      storageKey.current = `state:${context.session.userId}`;
+      const stored = await loadState(storageKey.current);
+      const next = applyRemoteContext(stored, context);
+      await saveState(next, storageKey.current);
+      dataRef.current = next;
+      setData(next);
+      setLots(context.lots);
+      setRemoteCollections(context.collections);
+      const firstBairro = context.lots[0]?.bairro || '';
+      setBairro(firstBairro);
+      setQuadra('');
+      setSelected(context.lots.filter(lot => lot.bairro === firstBairro).map(lot => lot.id));
+      setAuthError(''); setScreen('lots');
+    }
+    catch (e) { setAuthError(e.message); }
     finally { setBusy(''); lock.current = false; }
   }
 
   async function signOut() {
-    try { await commit(s => ({ ...s, session: null })); setCredentials({ username: '', password: '' }); setAuthError(''); setConfirmLogout(false); setScreen('lots'); }
+    try { await endAuthentication(); await commit(s => ({ ...s, session: null })); setLots([]); setRemoteCollections([]); setReviewCollection(null); setBairro(''); setQuadra(''); setSelected([]); setCredentials({ email: '', password: '' }); setAuthError(''); setConfirmLogout(false); setScreen('lots'); }
     catch (e) { notify(e.message, 'error'); }
   }
 
   if (!ready) return <div className="auth-page"><LoaderCircle className="spin" /><p>Preparando seu dispositivo...</p></div>;
-  if (storageError) return <div className="auth-page"><section className="auth-card"><Banner type="error" title="Armazenamento indisponível">{storageError} Tente abrir em uma janela normal do navegador.</Banner></section></div>;
-  if (!session) return <div className="auth-page"><form className="auth-card" onSubmit={e => { e.preventDefault(); signIn(); }}><div className="auth-brand">GEOCOLETA</div><span className="auth-label">SIMULAÇÃO · DADOS FICTÍCIOS</span><h1>Acessar demonstração</h1><p>O primeiro acesso exige conexão. Depois de preparar os lotes, esta sessão poderá continuar funcionando offline.</p><div className="auth-fields"><label className="field"><span>USUÁRIO</span><input autoComplete="username" value={credentials.username} onChange={e => { setCredentials(c => ({ ...c, username: e.target.value })); setAuthError(''); }} placeholder="Digite o usuário" /></label><label className="field"><span>SENHA</span><input type="password" autoComplete="current-password" value={credentials.password} onChange={e => { setCredentials(c => ({ ...c, password: e.target.value })); setAuthError(''); }} placeholder="Digite a senha" /></label>{authError && <p className="field-error" role="alert">{authError}</p>}<small>Credenciais de teste: <strong>teste123</strong> / <strong>teste123</strong></small></div><div className="auth-identity"><UserRound size={20} /><div><strong>{demoSession.userName}</strong><span>{demoSession.projectName}</span></div></div><Banner title={realOnline ? 'Conexão disponível' : 'Conecte-se para entrar'} type={realOnline ? 'success' : 'warning'} icon={realOnline ? Wifi : WifiOff}>{realOnline ? 'A senha é validada somente na simulação e não é armazenada.' : 'O acesso offline só é liberado depois de uma sessão iniciada online.'}</Banner><Button type="submit" disabled={!realOnline || !!busy}>{busy === 'signin' ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={17} />}{busy === 'signin' ? 'Entrando…' : 'Entrar na demonstração'}</Button><small>Conta e projeto fictícios para validação acadêmica.</small></form></div>;
+  if (storageError) return <div className="auth-page"><section className="auth-card"><Banner type="error" title="Aplicação indisponível">{storageError}</Banner></section></div>;
+  if (!session) return <div className="auth-page"><form className="auth-card" onSubmit={e => { e.preventDefault(); signIn(); }}><div className="auth-brand">GEOCOLETA</div><h1>Acessar GeoColeta</h1><p>O primeiro acesso exige conexão. Depois de baixar os lotes, a sessão e as coletas continuam disponíveis offline.</p><div className="auth-fields"><label className="field"><span>E-MAIL</span><input type="email" autoComplete="username" value={credentials.email} onChange={e => { setCredentials(c => ({ ...c, email: e.target.value })); setAuthError(''); }} placeholder="Digite o e-mail" /></label><label className="field"><span>SENHA</span><input type="password" autoComplete="current-password" value={credentials.password} onChange={e => { setCredentials(c => ({ ...c, password: e.target.value })); setAuthError(''); }} placeholder="Digite a senha" /></label>{authError && <p className="field-error" role="alert">{authError}</p>}<small>Teste: <strong>teste@geocoleta.com.br</strong> / <strong>teste123</strong></small></div><Button type="submit" disabled={!realOnline || !!busy}>{busy === 'signin' ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={17} />}{busy === 'signin' ? 'Entrando…' : 'Entrar'}</Button></form></div>;
 
-  return <div className="demo-layout">
-    <aside className="demo-guide">
-      <div className="eyebrow"><span className="live-dot" />PROTÓTIPO INTERATIVO</div>
-      <h2>Seu trabalho<br />continua.<br /><span>Mesmo offline.</span></h2>
-      <p className="guide-intro">Prepare a área, vá a campo e registre cada detalhe. Sincronize quando a conexão voltar.</p>
-      <ol className="journey">{[['Selecione os lotes', 'Filtre por bairro e quadra.'], ['Baixe para uso offline', 'Guarde os dados neste dispositivo.'], ['Faça a coleta', 'Preencha o REURB sem internet.'], ['Sincronize os registros', 'Envie suas pendências ao reconectar.']].map(([title, description], i) => <li className={step === i ? 'current' : step > i ? 'complete' : ''} key={title}><span>{step > i ? <Check size={15} /> : `0${i + 1}`}</span><div><strong>{title}</strong><p>{description}</p></div></li>)}</ol>
-      <div className="demo-controls"><div className="control-heading"><Smartphone size={17} /><strong>Controles da simulação</strong></div><label className="toggle-row"><span>Simular sem internet<small>O aplicativo continua funcionando.</small></span><input type="checkbox" checked={simOffline} onChange={e => setSimOffline(e.target.checked)} aria-label="Simular sem internet" /><span className="switch" aria-hidden="true" /></label><label className="failure-control"><input type="checkbox" checked={failNext} onChange={e => setFailNext(e.target.checked)} disabled={!!busy} />Simular falha no próximo envio</label></div>
-      <p className="demo-disclaimer"><ShieldCheck size={15} />Dados fictícios. Nenhuma conexão com as APIs reais.</p>
-      <a className="figma-link" href="https://www.figma.com/design/jqhxF8XHFV0Q6FbgWiocYx/GeoColeta-PWA?node-id=0-1" target="_blank" rel="noreferrer">Baseado no protótipo do Figma<ArrowRight size={14} /></a>
-    </aside>
-
+  return <div className="demo-layout" style={{ maxWidth: 528, gridTemplateColumns: 'minmax(0, 440px)', gap: 0, justifyContent: 'center' }}>
     <div className="app-shell">
-      <div className="simulation-ribbon"><span>SIMULAÇÃO · DADOS FICTÍCIOS</span><span>GeoColeta</span></div>
-      <header className="app-header"><div><div className="wordmark">GEOCOLETA</div><p>{pageSubtitles[screen]}</p></div><button className={`connection-toggle ${online ? '' : 'offline'}`} onClick={() => setSimOffline(v => !v)} aria-label={simOffline ? 'Voltar ao modo online' : 'Ativar modo offline'} title="Alternar modo da simulação">{online ? <Wifi size={20} /> : <WifiOff size={20} />}</button></header>
+      <header className="app-header"><div><div className="wordmark">GEOCOLETA</div><p>{pageSubtitles[screen]}</p></div><button className={`connection-toggle ${online ? '' : 'offline'}`} onClick={() => setSimOffline(v => !v)} aria-label={simOffline ? 'Voltar ao modo online' : 'Ativar modo offline'} title="Alternar conectividade">{online ? <Wifi size={20} /> : <WifiOff size={20} />}</button></header>
       <div className={`connection-bar ${online ? 'online' : 'offline'}`} role="status"><img src={`/assets/figma-${online ? (['detail','form','saved'].includes(screen) ? 0 : screenDots[screen]) : (['detail','form','saved'].includes(screen) ? screenDots[screen] : 4)}.svg`} width="9" height="9" alt="" />{online ? 'Online — conexão disponível' : 'Offline — registros salvos neste dispositivo'}</div>
 
       <main ref={mainRef} className={`app-content screen-${screen}`}>
@@ -295,7 +382,7 @@ function App() {
           {screen === 'lots' && <>
             <Heading title="Lotes disponíveis">Filtre os lotes e prepare os dados antes de sair para campo.</Heading>
             <div className="filters">
-              <label className="field"><span>BAIRRO</span><select aria-label="Bairro" value={bairro} onChange={e => changeFilter(e.target.value, '')}><option value="">Todos</option>{[...new Set(lots.map(l => l.bairro))].map(b => <option key={b}>{b}</option>)}</select></label>
+              <label className="field"><span>BAIRRO</span><select aria-label="Bairro" value={bairro} onChange={e => changeFilter(e.target.value, '')}><option value="">Todos</option>{[...new Set(source.map(l => l.bairro))].map(b => <option key={b}>{b}</option>)}</select></label>
               <label className="field"><span>QUADRA</span><select aria-label="Quadra" value={quadra} onChange={e => changeFilter(bairro, e.target.value)}><option value="">Todas</option>{quadras.map(q => <option key={q} value={q}>Q-{q}</option>)}</select></label>
             </div>
             <Button secondary onClick={() => { if (!online) return notify('A preparação precisa de internet. Os lotes já preparados continuam disponíveis.', 'error'); if (!chosen.length) return notify('Selecione pelo menos um lote.', 'error'); setScreen('prepare'); }} disabled={!ready || !!busy}><Download size={17} />Baixar dados para uso offline</Button>
@@ -310,7 +397,7 @@ function App() {
             <p className="last-update">Última preparação: {formatDate(data.lastPrepared)}</p>
           </>}
 
-          {screen === 'prepare' && <><Heading title="Preparar uso offline" back={() => navigate('lots')}>Escolha quais dados ficarão disponíveis neste dispositivo.</Heading><Banner title={online ? 'Conexão disponível' : 'Conexão indisponível'} type={online ? 'success' : 'error'} icon={online ? Wifi : WifiOff}>{online ? 'Faça o download antes de ir para uma região sem sinal.' : 'Seus filtros foram mantidos. Reconecte para continuar.'}</Banner><section className="data-card"><h3>Dados selecionados</h3><ul className="check-list"><li><Check size={16} />{chosen.length} lotes da área selecionada</li><li><Check size={16} />Endereços e situação atual</li><li><Check size={16} />Formulário REURB e dados do lote</li></ul><div className="area-summary"><span>{bairro || 'Todos os bairros'}</span><span>{quadra ? `Quadra ${quadra}` : 'Todas as quadras'}</span></div><small>Dados de demonstração · armazenamento local</small></section>{busy === 'prepare' && <div className="progress" role="progressbar" aria-label="Preparação dos lotes" aria-valuenow={progress} aria-valuemin="0" aria-valuemax="100"><span style={{ width: `${progress}%` }} /></div>}<Button onClick={prepareLots} disabled={!online || !!busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Download size={18} />}{busy ? `Preparando dados… ${progress}%` : 'Baixar dados para uso offline'}</Button><p className="last-update">Última preparação: {formatDate(data.lastPrepared)}</p></>}
+          {screen === 'prepare' && <><Heading title="Preparar uso offline" back={() => navigate('lots')}>Escolha quais dados ficarão disponíveis neste dispositivo.</Heading><Banner title={online ? 'Conexão disponível' : 'Conexão indisponível'} type={online ? 'success' : 'error'} icon={online ? Wifi : WifiOff}>{online ? 'Faça o download antes de ir para uma região sem sinal.' : 'Seus filtros foram mantidos. Reconecte para continuar.'}</Banner><section className="data-card"><h3>Dados selecionados</h3><ul className="check-list"><li><Check size={16} />{chosen.length} lotes da área selecionada</li><li><Check size={16} />Endereços e situação atual</li><li><Check size={16} />Formulário REURB e dados do lote</li></ul><div className="area-summary"><span>{bairro || 'Todos os bairros'}</span><span>{quadra ? `Quadra ${quadra}` : 'Todas as quadras'}</span></div><small>Dados do projeto · armazenamento local</small></section>{busy === 'prepare' && <div className="progress" role="progressbar" aria-label="Preparação dos lotes" aria-valuenow={progress} aria-valuemin="0" aria-valuemax="100"><span style={{ width: `${progress}%` }} /></div>}<Button onClick={prepareLots} disabled={!online || !!busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <Download size={18} />}{busy ? `Preparando dados… ${progress}%` : 'Baixar dados para uso offline'}</Button><p className="last-update">Última preparação: {formatDate(data.lastPrepared)}</p></>}
 
           {screen === 'detail' && active && <>
             <Heading title={'Lote ' + active.id} back={() => navigate('lots')}>{active.address}</Heading>
@@ -319,27 +406,30 @@ function App() {
               ['Bairro', active.bairro], ['Quadra', 'Q-' + active.quadra], ['Inscrição', active.inscription],
               ['Situação da coleta', collectionLabels[activeStatus]], ['Sincronização', activeRecord ? statusLabels[activeRecord.status] : activeStatus === 'validated' ? 'Sem pendência local' : 'Sem registro finalizado'],
             ].map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl></section>
-            <div className="location-placeholder"><MapPin size={23} /><div><strong>{active.address}, {active.number}</strong><p>Localização textual disponível. O mapa não faz parte desta simulação.</p></div></div>
+            <div className="location-placeholder"><MapPin size={23} /><div><strong>{active.address}, {active.number}</strong><p>Localização textual disponível. O mapa não faz parte desta versão.</p></div></div>
             {data.drafts[active.id] && <Banner type="warning" title="Você tem um rascunho">Continue de onde parou. Os campos foram mantidos.</Banner>}
             {activeStatus === 'validated' && <Banner title="Coleta validada">Esta coleta já foi validada pela administração e está disponível somente para consulta.</Banner>}
+            {activeStatus === 'returned' && <Banner type="error" title="Correção solicitada">{activeRecord?.returnReason || 'Revise os dados informados e finalize a coleta novamente.'}</Banner>}
             <div className="bottom-action"><Button onClick={() => openForm()} disabled={!!busy || (!data.prepared[active.id] && !online)}>
-              {readOnly ? 'Ver coleta' : activeStatus === 'paused' ? 'Retomar coleta' : activeStatus === 'active' ? 'Continuar coleta' : 'Iniciar coleta'}<ArrowRight size={17} />
+              {readOnly ? 'Ver coleta' : activeStatus === 'returned' ? 'Corrigir coleta' : activeStatus === 'paused' ? 'Retomar coleta' : activeStatus === 'active' ? 'Continuar coleta' : 'Iniciar coleta'}<ArrowRight size={17} />
             </Button></div>
           </>}
 
-          {screen === 'form' && form && active && <CollectionForm
+          {screen === 'form' && form && active && <>
+          {activeRecord?.returnReason && !readOnly && <Banner type="warning" title="Motivo da correção">{activeRecord.returnReason}</Banner>}
+          <CollectionForm
             lot={active} form={form} errors={errors} updateField={updateField} formTab={formTab} setFormTab={setFormTab}
             onCivilChange={changeCivilStatus} onSubmit={saveRecord} onPause={pauseCollection}
             onReopen={() => openForm(active, true)} onBack={() => navigate('detail')}
             readOnly={readOnly} collectionLabel={collectionLabels[activeStatus]} validated={activeStatus === 'validated'}
             busy={busy} draftTime={draftTime} attachDocument={attachDocument}
-          />}
+          /></>}
 
           {screen === 'saved' && <><section className="success-panel"><span className="success-icon"><Check size={34} strokeWidth={2.5} /></span><h1>Registro salvo</h1><p>A coleta foi armazenada no dispositivo e está aguardando sincronização.</p></section><Banner type="warning" title={`${pending.length} ${pending.length === 1 ? 'item pendente' : 'itens pendentes'}`}>Sincronize quando a conexão estiver disponível.</Banner><Button onClick={() => navigate('queue')}>Ver pendências<ArrowRight size={17} /></Button><Button secondary onClick={() => navigate('lots')}>Voltar para lotes</Button></>}
 
           {screen === 'queue' && <>
             <Heading title="Pendências de sincronização">Somente coletas finalizadas são incluídas no envio.</Heading>
-            <Banner title={online ? 'Conexão disponível' : 'Sem conexão no momento'} type={online ? 'success' : 'warning'} icon={online ? Wifi : WifiOff}>{online ? 'Agora é possível simular o envio dos registros pendentes.' : 'Suas coletas estão seguras. Reconecte para sincronizar.'}</Banner>
+            <Banner title={online ? 'Conexão disponível' : 'Sem conexão no momento'} type={online ? 'success' : 'warning'} icon={online ? Wifi : WifiOff}>{online ? 'Agora é possível enviar os registros pendentes ao banco acadêmico.' : 'Suas coletas estão seguras. Reconecte para sincronizar.'}</Banner>
             {!sessionRecords.length && <div className="empty-state"><CheckCheck size={35} /><h3>Nenhuma pendência por aqui</h3><p>Finalize uma coleta para adicioná-la à fila. Os rascunhos permanecem nos lotes.</p><button className="text-button" onClick={() => navigate('lots')}>Ir para os lotes<ArrowRight size={14} /></button></div>}
             <div className="queue-list">{[...sessionRecords].reverse().map(record => {
               const lot = lots.find(l => l.id === record.lotId);
@@ -347,8 +437,9 @@ function App() {
               return <article className="data-card queue-card" key={record.id}>
                 <div className="queue-title"><h3>Lote {record.lotId}</h3><span className={'badge ' + record.status}>{record.status === 'sending' && <LoaderCircle size={11} className="spin" />}Sincronização: {statusLabels[record.status]}</span></div>
                 <div className="queue-collection"><CollectionBadge status={status} /></div>
+                {record.returnReason && !isReadOnly(status) && <Banner type="warning" title="Motivo da correção">{record.returnReason}</Banner>}
                 <p>{lot?.address || 'Lote armazenado no dispositivo'}</p>
-                <small>{record.status === 'synced' ? 'Sincronizado na simulação' : 'Salvo'} em {formatDate(record.status === 'synced' ? record.sentAt : record.createdAt)}</small>
+                <small>{record.status === 'synced' ? 'Sincronizado no banco acadêmico' : 'Salvo'} em {formatDate(record.status === 'synced' ? record.sentAt : record.createdAt)}</small>
                 {!isReadOnly(status) && <p className="queue-hint">Coleta em edição. Finalize novamente para incluir as alterações no envio.</p>}
                 {record.error && <div className="queue-error"><AlertCircle size={14} /><span>{record.error}</span></div>}
                 {lot && <button className="text-button" disabled={!!busy} onClick={() => openForm(lot)}>{isReadOnly(status) ? 'Ver coleta' : 'Retomar coleta'}<ChevronRight size={13} /></button>}
@@ -357,22 +448,39 @@ function App() {
             <div className="bottom-action">
               {busy === 'sync' && <div className="progress" role="progressbar" aria-label="Sincronização" aria-valuenow={progress} aria-valuemin="0" aria-valuemax="100"><span style={{ width: progress + '%' }} /></div>}
               <Button onClick={synchronize} disabled={!online || !pending.length || !!busy}>{busy === 'sync' ? <LoaderCircle className="spin" size={18} /> : <RefreshCw size={17} />}{busy === 'sync' ? 'Sincronizando… ' + progress + '%' : 'Sincronizar ' + pending.length + ' ' + (pending.length === 1 ? 'registro' : 'registros')}</Button>
-              <label className="mobile-failure"><input type="checkbox" checked={failNext} onChange={e => setFailNext(e.target.checked)} disabled={!!busy} />Simular falha no próximo envio</label>
             </div>
           </>}
 
-          {screen === 'synced' && <><section className="success-panel synced"><span className="success-icon"><Check size={34} strokeWidth={2.5} /></span><h1>Tudo sincronizado</h1><p>{syncedCount} {syncedCount === 1 ? 'registro enviado' : 'registros enviados'} com sucesso na simulação.</p><span className="badge green">0 pendências</span></section><Banner title="Demonstração concluída" type="info">Nenhum dado foi enviado ao sistema real da empresa.</Banner><Button onClick={() => navigate('lots')}>Voltar para a lista de lotes</Button><Button secondary onClick={() => navigate('queue')}>Ver registros sincronizados</Button></>}
+          {screen === 'synced' && <><section className="success-panel synced"><span className="success-icon"><Check size={34} strokeWidth={2.5} /></span><h1>Tudo sincronizado</h1><p>{syncedCount} {syncedCount === 1 ? 'registro enviado' : 'registros enviados'} com sucesso ao banco acadêmico.</p><span className="badge green">0 pendências</span></section><Banner title="Sincronização confirmada" type="info">Os registros foram persistidos no Supabase e continuam disponíveis neste dispositivo.</Banner><Button onClick={() => navigate('lots')}>Voltar para a lista de lotes</Button><Button secondary onClick={() => navigate('queue')}>Ver registros sincronizados</Button></>}
 
-          {screen === 'device' && <><Heading title="Meu dispositivo">Acompanhe os dados disponíveis neste navegador.</Heading><section className="session-card"><UserRound size={19} /><div><strong>{session.userName}</strong><span>{session.projectName}</span></div></section><div className="storage-stats"><div><HardDrive size={21} /><strong>{prepared.length}</strong><span>Lotes offline</span></div><div><CloudUpload size={21} /><strong>{pending.length}</strong><span>Pendências</span></div><div><CheckCheck size={21} /><strong>{sessionRecords.filter(r => r.status === 'synced').length}</strong><span>Sincronizados</span></div></div><section className="data-card"><h3>Áreas preparadas</h3>{!prepared.length ? <p>Nenhuma área preparada neste dispositivo.</p> : [...new Set(prepared.map(l => l.bairro))].map(b => <div className="prepared-area" key={b}><MapPin size={17} /><div><strong>{b}</strong><small>{prepared.filter(l => l.bairro === b).length} lotes disponíveis offline</small></div><CheckCircle2 size={17} /></div>)}<small className="last-update">Atualizado: {formatDate(data.lastPrepared)}</small></section>{installEvent && <Button onClick={async () => { await installEvent.prompt(); await installEvent.userChoice; setInstallEvent(null); }}><Download size={17} />Instalar aplicativo</Button>}<Button secondary onClick={clearPrepared} disabled={!!busy || !prepared.length}><Trash2 size={17} />Remover lotes preparados</Button><Banner title="Seus registros permanecem aqui" type="info">As coletas e os rascunhos são mantidos ao fechar ou atualizar a página. Não limpe os dados do navegador durante o teste.</Banner><button className="reset-button" onClick={() => setConfirmReset(true)}><RotateCcw size={15} />Reiniciar a simulação</button><button className="reset-button" onClick={() => pending.length || Object.keys(data.drafts).length ? setConfirmLogout(true) : signOut()}><ArrowLeft size={15} />Sair da demonstração</button><p className="version">GeoColeta · Simulação 1.0<br />Estrutura baseada no protótipo Figma</p></>}
+          {screen === 'validation' && canReview && (reviewCollection ? <CollectionForm
+            lot={reviewCollection.lot} form={normalizeForm(reviewCollection.lot, reviewCollection.form)} errors={{}} updateField={() => {}}
+            formTab={formTab} setFormTab={setFormTab} onCivilChange={() => {}} onSubmit={event => event.preventDefault()}
+            onPause={() => {}} onReopen={() => {}} onBack={() => setReviewCollection(null)} readOnly
+            collectionLabel={reviewLabels[reviewCollection.remoteStatus]} validated={reviewCollection.remoteStatus === 'Validada'}
+            busy={busy} attachDocument={() => {}} allowReopen={false} backLabel="Voltar para validações"
+            readOnlyMessage={reviewCollection.remoteStatus === 'Finalizada' ? 'Confira os dados antes de validar ou devolver ao coletor.' : reviewCollection.remoteStatus === 'Validada' ? 'Esta coleta já foi validada.' : `Devolvida para correção: ${reviewCollection.returnReason}`}
+            reviewActions={['Finalizada', 'Validada'].includes(reviewCollection.remoteStatus) && <div className="review-actions">{reviewCollection.remoteStatus === 'Finalizada' && <Button type="button" onClick={() => reviewCurrent('validate')} disabled={!online || !!busy}><CheckCircle2 size={17} />Validar coleta</Button>}<Button type="button" secondary onClick={() => setConfirmReturn(true)} disabled={!online || !!busy}><RotateCcw size={17} />{reviewCollection.remoteStatus === 'Validada' ? 'Reabrir para correção' : 'Devolver para correção'}</Button></div>}
+          /> : <>
+            <Heading title="Validação das coletas">Analise os registros sincronizados do projeto antes da aprovação.</Heading>
+            {!online && <Banner type="warning" title="Painel indisponível offline">Conecte-se para consultar e validar as coletas do servidor.</Banner>}
+            <div className="storage-stats review-stats"><div><CloudUpload size={21} /><strong>{remoteCollections.filter(item => item.remoteStatus === 'Finalizada').length}</strong><span>Aguardando</span></div><div><CheckCircle2 size={21} /><strong>{remoteCollections.filter(item => item.remoteStatus === 'Validada').length}</strong><span>Validadas</span></div><div><RotateCcw size={21} /><strong>{remoteCollections.filter(item => item.remoteStatus === 'Devolvida').length}</strong><span>Devolvidas</span></div></div>
+            <div className="filters"><label className="field"><span>STATUS</span><select aria-label="Status da coleta" value={reviewStatus} onChange={event => setReviewStatus(event.target.value)}><option value="">Todos</option>{Object.entries(reviewLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="field"><span>BAIRRO</span><select aria-label="Bairro da coleta" value={reviewBairro} onChange={event => setReviewBairro(event.target.value)}><option value="">Todos</option>{[...new Set(remoteCollections.map(item => item.lot.bairro))].map(value => <option key={value}>{value}</option>)}</select></label></div>
+            {!reviewItems.length && <div className="empty-state"><ClipboardCheck size={35} /><h3>Nenhuma coleta neste filtro</h3><p>As coletas aparecem aqui depois que o coletor finaliza e sincroniza.</p></div>}
+            <div className="queue-list">{reviewItems.map(item => <article className="data-card review-card" key={item.id}><div className="queue-title"><h3>Lote {item.lotId}</h3><span className={`badge ${item.remoteStatus === 'Validada' ? 'green' : item.remoteStatus === 'Devolvida' ? 'error' : ''}`}>{reviewLabels[item.remoteStatus]}</span></div><strong>{item.form.nome || 'Responsável não informado'}</strong><p>{item.lot.address}, {item.lot.number} · {item.lot.bairro}</p><small>Sincronizada em {formatDate(item.sentAt)}</small><button className="text-button" onClick={() => { setReviewCollection(item); setFormTab('pessoais'); }}>Abrir coleta<ChevronRight size={13} /></button></article>)}</div>
+          </>)}
+
+          {screen === 'device' && <><Heading title="Meu dispositivo">Acompanhe os dados disponíveis neste navegador.</Heading><section className="session-card"><UserRound size={19} /><div><strong>{session.userName || session.email}</strong><span>{session.email}</span><span>{permissionLabels[session.permission] || session.permission} · {session.projectName}</span></div></section><div className="storage-stats"><div><HardDrive size={21} /><strong>{prepared.length}</strong><span>Lotes offline</span></div><div><CloudUpload size={21} /><strong>{pending.length}</strong><span>Pendências</span></div><div><CheckCheck size={21} /><strong>{sessionRecords.filter(r => r.status === 'synced').length}</strong><span>Sincronizados</span></div></div><section className="data-card"><h3>Áreas preparadas</h3>{!prepared.length ? <p>Nenhuma área preparada neste dispositivo.</p> : [...new Set(prepared.map(l => l.bairro))].map(b => <div className="prepared-area" key={b}><MapPin size={17} /><div><strong>{b}</strong><small>{prepared.filter(l => l.bairro === b).length} lotes disponíveis offline</small></div><CheckCircle2 size={17} /></div>)}<small className="last-update">Atualizado: {formatDate(data.lastPrepared)}</small></section>{installEvent && <Button onClick={async () => { await installEvent.prompt(); await installEvent.userChoice; setInstallEvent(null); }}><Download size={17} />Instalar aplicativo</Button>}<Button secondary onClick={clearPrepared} disabled={!!busy || !prepared.length}><Trash2 size={17} />Remover lotes preparados</Button><Banner title="Seus registros permanecem aqui" type="info">As coletas e os rascunhos são mantidos ao fechar ou atualizar a página. Não limpe os dados do navegador durante o teste.</Banner><button className="reset-button" onClick={() => setConfirmReset(true)}><RotateCcw size={15} />Reiniciar dados locais</button><button className="reset-button" onClick={() => pending.length || Object.keys(data.drafts).length ? setConfirmLogout(true) : signOut()}><ArrowLeft size={15} />Sair</button><p className="version">GeoColeta · Ambiente acadêmico<br />Estrutura baseada no protótipo Figma</p></>}
         </>}
       </main>
 
-      <nav className="bottom-nav" aria-label="Navegação principal">{[['lots', Grid2X2, 'Lotes'], ['queue', RefreshCw, 'Pendências'], ['device', UserRound, 'Dispositivo']].map(([key, Icon, label]) => <button key={key} className={(key === 'lots' && !['queue','synced','device'].includes(screen)) || screen === key || (key === 'queue' && screen === 'synced') ? 'active' : ''} onClick={() => navigate(key)} disabled={!!busy}><span className="nav-icon"><Icon size={19} />{key === 'queue' && pending.length > 0 && <b>{pending.length}</b>}</span>{label}</button>)}</nav>
+      <nav className="bottom-nav" aria-label="Navegação principal">{(canReview ? [['lots', Grid2X2, 'Lotes'], ['validation', ClipboardCheck, 'Validação'], ['device', UserRound, 'Dispositivo']] : [['lots', Grid2X2, 'Lotes'], ['queue', RefreshCw, 'Pendências'], ['device', UserRound, 'Dispositivo']]).map(([key, Icon, label]) => <button key={key} className={(key === 'lots' && !['queue','synced','validation','device'].includes(screen)) || screen === key || (key === 'queue' && screen === 'synced') ? 'active' : ''} onClick={() => navigate(key)} disabled={!!busy}><span className="nav-icon"><Icon size={19} />{key === 'queue' && pending.length > 0 && <b>{pending.length}</b>}{key === 'validation' && remoteCollections.some(item => item.remoteStatus === 'Finalizada') && <b>{remoteCollections.filter(item => item.remoteStatus === 'Finalizada').length}</b>}</span>{label}</button>)}</nav>
     </div>
     {toast && <div className={`toast ${toast.kind}`} role={toast.kind === 'error' ? 'alert' : 'status'}>{toast.kind === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}<span>{toast.message}</span><button onClick={() => setToast(null)} aria-label="Fechar mensagem"><X size={17} /></button></div>}
-    {confirmReset && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="reset-title"><RotateCcw size={27} /><h2 id="reset-title">Começar de novo?</h2><p>Isso remove somente os dados desta simulação neste navegador, incluindo rascunhos e pendências.</p><button className="button primary" onClick={resetDemo}>Reiniciar simulação</button><button autoFocus className="button secondary" onClick={() => setConfirmReset(false)}>Continuar de onde parei</button></div></div>}
-    {confirmLogout && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="logout-title"><AlertCircle size={27} /><h2 id="logout-title">Existem dados não sincronizados</h2><p>Ao sair, eles permanecerão protegidos neste dispositivo e voltarão a aparecer no próximo acesso desta conta fictícia.</p><button className="button primary" onClick={signOut}>Sair sem apagar os dados</button><button autoFocus className="button secondary" onClick={() => setConfirmLogout(false)}>Continuar conectado</button></div></div>}
+    {confirmReset && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="reset-title"><RotateCcw size={27} /><h2 id="reset-title">Começar de novo?</h2><p>Isso remove somente os dados locais desta conta neste navegador, incluindo rascunhos e pendências.</p><button className="button primary" onClick={resetDemo}>Reiniciar dados locais</button><button autoFocus className="button secondary" onClick={() => setConfirmReset(false)}>Continuar de onde parei</button></div></div>}
+    {confirmLogout && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="logout-title"><AlertCircle size={27} /><h2 id="logout-title">Existem dados não sincronizados</h2><p>Ao sair, eles permanecerão protegidos neste dispositivo e voltarão a aparecer no próximo acesso desta conta.</p><button className="button primary" onClick={signOut}>Sair sem apagar os dados</button><button autoFocus className="button secondary" onClick={() => setConfirmLogout(false)}>Continuar conectado</button></div></div>}
     {confirmClearSpouse && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="spouse-title"><AlertCircle size={27} /><h2 id="spouse-title">Remover dados do cônjuge?</h2><p>O novo estado civil não utiliza essa seção. Confirme para apagar os dados já preenchidos.</p><button className="button primary" onClick={confirmCivilChange}>Alterar e remover dados</button><button autoFocus className="button secondary" onClick={() => { setPendingCivil(''); setConfirmClearSpouse(false); }}>Manter estado civil anterior</button></div></div>}
+    {confirmReturn && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true" aria-labelledby="return-title"><RotateCcw size={27} /><h2 id="return-title">{reviewCollection?.remoteStatus === 'Validada' ? 'Reabrir coleta validada?' : 'Devolver para correção?'}</h2><p>{reviewCollection?.remoteStatus === 'Validada' ? 'A validação será retirada. Informe o motivo para liberar a correção pelo coletor.' : 'Explique ao coletor o que precisa ser revisado.'} O registro voltará editável no próximo acesso conectado.</p><label className="field"><span>MOTIVO DA CORREÇÃO</span><textarea autoFocus rows="4" maxLength="500" value={returnReason} onChange={event => setReturnReason(event.target.value)} placeholder="Descreva a correção necessária" /></label><button className="button primary" onClick={() => reviewCurrent('return')} disabled={!online || !!busy || returnReason.trim().length < 5}>{reviewCollection?.remoteStatus === 'Validada' ? 'Confirmar reabertura' : 'Confirmar devolução'}</button><button className="button secondary" onClick={() => { setConfirmReturn(false); setReturnReason(''); }} disabled={!!busy}>Cancelar</button></div></div>}
   </div>;
 }
 

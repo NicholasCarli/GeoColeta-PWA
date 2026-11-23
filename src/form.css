@@ -48,6 +48,7 @@
 .collection-paused { color: #976400; }
 .collection-finished { color: #2459a3; }
 .collection-validated { color: #178235; }
+.collection-returned { color: #b63434; }
 .badge.synced { background: #e8f5ec; color: #178235; }
 .queue-collection { margin: 8px 0; }
 .queue-hint { font-size: 10px; line-height: 1.7; color: #60717b; margin-top: 8px; }

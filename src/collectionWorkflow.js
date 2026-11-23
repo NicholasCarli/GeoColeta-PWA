@@ -2,7 +2,7 @@ import { validateCollectionForm } from './formValidation.js';
 
 export const collectionLabels = Object.freeze({
   waiting: 'Aguardando consulta', active: 'Ativo', paused: 'Pausado',
-  finished: 'Finalizado', validated: 'Validado',
+  finished: 'Finalizado', validated: 'Validado', returned: 'Correção solicitada',
 });
 export const syncLabels = Object.freeze({ pending: 'Pendente', sending: 'Enviando', synced: 'Sincronizado', error: 'Erro' });
 
