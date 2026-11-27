@@ -18,13 +18,12 @@ const pageSubtitles = { lots: 'Consulta e coleta de dados em campo', prepare: 'D
 const screenDots = { lots: 0, prepare: 3, detail: 4, form: 5, saved: 6, queue: 7, synced: 8, validation: 0, device: 0 };
 const remoteStatus = { Aguardando: 'waiting', Ativo: 'active', Pausado: 'paused', Finalizado: 'finished', Validado: 'validated', Correcao: 'returned' };
 const remoteCollectionStatus = { Finalizada: 'finished', Validada: 'validated', Devolvida: 'returned' };
-const reviewRoles = ['WCOGEO_ADMIN', 'WCOGEO_ANALISTA', 'PREFEITURA_ADMIN'];
 const reviewLabels = { Finalizada: 'Aguardando validação', Validada: 'Validada', Devolvida: 'Devolvida para correção' };
-const permissionLabels = { WCOGEO_ADMIN: 'Administrador WCOGEO', WCOGEO_ANALISTA: 'Analista WCOGEO', WCOGEO_USUARIO: 'Usuário WCOGEO', PREFEITURA_ADMIN: 'Administrador da prefeitura', PREFEITURA_USUARIO: 'Usuário da prefeitura' };
+const permissionLabels = { ADMIN: 'Administrador', COLETOR: 'Coletor' };
 const applyRemoteContext = (stored, context) => {
   const serverStates = Object.fromEntries(context.lots.filter(lot => lot.status !== 'Aguardando').map(lot => [lot.id, remoteStatus[lot.status]]));
   const collectionStates = { ...serverStates, ...stored.collectionStates };
-  if (reviewRoles.includes(context.session.permission)) return { ...stored, session: context.session, collectionStates };
+  if (context.session.permission === 'ADMIN') return { ...stored, session: context.session, collectionStates };
   const records = [...stored.records];
   const prepared = { ...stored.prepared };
   for (const remote of context.collections || []) {
@@ -156,7 +155,7 @@ function App() {
   }, [form, screen, busy, active, readOnly]);
 
   const session = data.session;
-  const canReview = reviewRoles.includes(session?.permission);
+  const canReview = session?.permission === 'ADMIN';
   const sessionRecords = data.records.filter(r => !session || (r.userId === session.userId && r.projectId === session.projectId));
   const pending = sessionRecords.filter(r => canSynchronize(data, r));
   const prepared = Object.values(data.prepared);

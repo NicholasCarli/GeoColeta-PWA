@@ -20,7 +20,7 @@ begin
    where c.id = p_coleta_id
      and c.status in ('Finalizada', 'Validada')
      and p.usuario_id = (select auth.uid())
-     and p.permissao in ('WCOGEO_ADMIN', 'WCOGEO_ANALISTA', 'PREFEITURA_ADMIN')
+     and p.permissao = 'ADMIN'
    for update of c;
 
   if v_projeto_lote_id is null then
@@ -68,7 +68,7 @@ begin
    where p.usuario_id = (select auth.uid())
      and p.projeto_id = new.projeto_id;
 
-  pode_revisar := coalesce(permissao_atual in ('WCOGEO_ADMIN', 'WCOGEO_ANALISTA', 'PREFEITURA_ADMIN'), false);
+  pode_revisar := coalesce(permissao_atual = 'ADMIN', false);
 
   if old.status = 'Validado' and new.status <> old.status then
     if not pode_revisar

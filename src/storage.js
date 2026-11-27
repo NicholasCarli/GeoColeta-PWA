@@ -1,4 +1,5 @@
 import { migrateCollectionState } from './collectionWorkflow.js';
+import { normalizePermission } from './permissions.js';
 
 const DB_NAME = 'geocoleta-simulacao-v1';
 export const demoSession = Object.freeze({
@@ -13,6 +14,7 @@ let writes = Promise.resolve();
 
 export function restoreState(stored = {}) {
   const state = { ...initialState(), ...stored };
+  if (state.session) state.session = { ...state.session, permission: normalizePermission(state.session.permission) };
   state.collectionStates = { ...initialState().collectionStates, ...stored.collectionStates };
   // The validated demo example must never override work saved by an older version.
   for (const id of Object.keys(initialState().collectionStates)) {

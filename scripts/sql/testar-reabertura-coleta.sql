@@ -9,10 +9,10 @@ begin
     into v_context
     from public.coletas c
     join public.projeto_lotes pl on pl.id = c.projeto_lote_id
-    join public.perfis p on p.projeto_id = pl.projeto_id and p.permissao = 'WCOGEO_ADMIN'
+    join public.perfis p on p.projeto_id = pl.projeto_id and p.permissao = 'ADMIN'
     join public.perfis coletor on coletor.usuario_id = c.coletor_id
    where c.status in ('Finalizada', 'Validada')
-     and coletor.permissao in ('WCOGEO_USUARIO', 'PREFEITURA_USUARIO')
+     and coletor.permissao = 'COLETOR'
    order by c.updated_at
    limit 1;
 
