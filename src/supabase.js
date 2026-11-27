@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { normalizePermission } from './permissions.js';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -69,7 +70,7 @@ export async function loadRemoteContext(user) {
       userId: user.id,
       userName: profile.nome_exibicao || user.email.split('@')[0],
       email: user.email,
-      permission: profile.permissao,
+      permission: normalizePermission(profile.permissao),
       projectId: profile.projeto.id,
       projectName: profile.projeto.nome,
     },

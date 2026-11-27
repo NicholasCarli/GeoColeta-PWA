@@ -13,7 +13,7 @@ async function openFixture(permission, status) {
   const user = { id: '11111111-1111-4111-8111-111111111111', email: 'usuario@example.invalid', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {} };
   const project = { id: '22222222-2222-4222-8222-222222222222', nome: 'Projeto de teste', categoria: 'reurb', cidade: 'Cidade de teste' };
   const lot = { id: 'TESTE-001', bairro: 'Bairro de teste', quadra: '1', endereco: 'Logradouro de teste', numero: '10', inscricao: 'TESTE-001', situacao_cadastral: 'Ativo' };
-  const projectLot = { id: '33333333-3333-4333-8333-333333333333', projeto_id: project.id, status: status === 'Validada' ? 'Validado' : 'Correcao', lote: lot };
+  const projectLot = { id: '33333333-3333-4333-8333-333333333333', projeto_id: project.id, status: status === 'Validada' ? 'Validado' : status ? 'Correcao' : 'Aguardando', lote: lot };
   const row = { id: '44444444-4444-4444-8444-444444444444', projeto_lote_id: projectLot.id, coletor_id: user.id, dados: { nome: 'Pessoa de teste', estadoCivil: 'solteiro' }, status, created_at: '2026-11-23T12:00:00Z', updated_at: '2026-11-23T13:00:00Z', synced_at: '2026-11-23T12:30:00Z', validado_em: status === 'Validada' ? '2026-11-23T13:00:00Z' : null, devolvido_em: status === 'Devolvida' ? '2026-11-23T13:00:00Z' : null, motivo_devolucao: status === 'Devolvida' ? reason : null, projeto_lote: projectLot };
   let calls = 0;
   const token = [Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url'), Buffer.from(JSON.stringify({ sub: user.id, role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url'), 'assinatura-de-teste'].join('.');
@@ -30,7 +30,7 @@ async function openFixture(permission, status) {
     }
     if (path.endsWith('/perfis')) return route.fulfill({ json: { nome_exibicao: 'Usuário de teste', permissao: permission, projeto: project } });
     if (path.endsWith('/projeto_lotes')) return route.fulfill({ json: [projectLot] });
-    if (path.endsWith('/coletas')) return route.fulfill({ json: [row] });
+    if (path.endsWith('/coletas')) return route.fulfill({ json: status ? [row] : [] });
     throw new Error(`Consulta inesperada no teste: ${path}`);
   });
   await page.goto(base);
@@ -42,8 +42,9 @@ async function openFixture(permission, status) {
 }
 
 try {
-  for (const permission of ['WCOGEO_ADMIN', 'WCOGEO_ANALISTA', 'PREFEITURA_ADMIN']) {
+  for (const permission of ['ADMIN', 'WCOGEO_ADMIN']) {
     const { context, page, errors, calls } = await openFixture(permission, 'Validada');
+    assert.equal(await page.getByRole('button', { name: 'Pendências', exact: true }).count(), 0);
     await page.getByRole('button', { name: 'Validação', exact: true }).click();
     await page.getByLabel('Status da coleta', { exact: true }).selectOption('Validada');
     await page.getByLabel('Bairro da coleta', { exact: true }).selectOption('Bairro de teste');
@@ -80,18 +81,33 @@ try {
     await context.close();
   }
 
-  const { context, page, errors } = await openFixture('PREFEITURA_USUARIO', 'Devolvida');
-  assert.equal(await page.getByRole('button', { name: 'Validação', exact: true }).count(), 0);
-  await page.getByRole('button', { name: 'Pendências', exact: true }).click();
-  await page.locator('.queue-card .banner').getByText(reason, { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Retomar coleta' }).click();
-  await page.getByRole('heading', { name: 'Coleta — Lote TESTE-001' }).waitFor();
-  await page.locator('.app-content > .banner').getByText(reason, { exact: true }).waitFor();
-  assert.equal(await page.locator('#nome').isDisabled(), false);
-  assert.equal(await page.locator('#nome').inputValue(), 'Pessoa de teste');
-  assert.deepEqual(errors, []);
-  await context.close();
-  console.log('OK — três perfis revisores reabrem com motivo; cancelar preserva o status.');
+  {
+    const { context, page, errors } = await openFixture('ADMIN', null);
+    await page.locator('.lot-card .lot-open').click();
+    await page.getByRole('button', { name: 'Iniciar coleta', exact: true }).click();
+    await page.getByRole('heading', { name: 'Coleta — Lote TESTE-001' }).waitFor();
+    assert.equal(await page.locator('#nome').isDisabled(), false);
+    await page.locator('#nome').fill('Coleta de teste do administrador');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+
+  for (const permission of ['COLETOR', 'PREFEITURA_USUARIO']) {
+    const { context, page, errors } = await openFixture(permission, 'Devolvida');
+    assert.equal(await page.getByRole('button', { name: 'Validação', exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'Pendências', exact: true }).click();
+    await page.locator('.queue-card .banner').getByText(reason, { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Retomar coleta' }).click();
+    await page.getByRole('heading', { name: 'Coleta — Lote TESTE-001' }).waitFor();
+    await page.locator('.app-content > .banner').getByText(reason, { exact: true }).waitFor();
+    assert.equal(await page.locator('#nome').isDisabled(), false);
+    assert.equal(await page.locator('#nome').inputValue(), 'Pessoa de teste');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  console.log('OK — ADMIN reabre com motivo; cancelar preserva o status.');
+  console.log('OK — perfil remoto legado continua funcionando durante a atualização.');
+  console.log('OK — ADMIN também inicia coleta e edita o formulário.');
   console.log('OK — aba Validação e botão de voltar retornam à lista no topo, mantendo os filtros.');
   console.log('OK — coletor vê o motivo nas pendências e no formulário, com os dados preservados.');
 } finally {

@@ -78,3 +78,23 @@ console.log('OK — iniciar, pausar, retomar, finalizar e reabrir sem duplicar r
 console.log('OK — somente finalizados entram no envio; validados permanecem bloqueados');
 console.log('OK — migração preserva dados e recupera edição/envio interrompidos');
 console.log('OK — coleta devolvida pode ser corrigida e finalizada novamente');
+
+for (const [permission, expected] of Object.entries({
+  WCOGEO_ADMIN: 'ADMIN', WCOGEO_ANALISTA: 'ADMIN', PREFEITURA_ADMIN: 'ADMIN',
+  WCOGEO_USUARIO: 'COLETOR', PREFEITURA_USUARIO: 'COLETOR', ADMIN: 'ADMIN', COLETOR: 'COLETOR',
+})) {
+  const cached = { ...state, session: { ...demoSession, permission }, drafts: { '002': { nome: 'Rascunho preservado' } } };
+  const before = structuredClone(cached);
+  const restored = restoreState(cached);
+  assert.equal(restored.session.permission, expected);
+  assert.equal(restored.session.userId, cached.session.userId);
+  assert.equal(restored.session.projectId, cached.session.projectId);
+  assert.deepEqual(restored.records, cached.records);
+  assert.deepEqual(restored.drafts, cached.drafts);
+  assert.deepEqual(cached, before);
+  assert.deepEqual(restoreState(restored), restored);
+}
+assert.equal(restoreState({ session: { ...demoSession, permission: 'DESCONHECIDO' } }).session.permission, 'DESCONHECIDO');
+assert.equal(restoreState({ session: { ...demoSession, permission: '__proto__' } }).session.permission, '__proto__');
+assert.equal(restoreState({ session: { ...demoSession, permission: 'constructor' } }).session.permission, 'constructor');
+console.log('OK — sessões antigas migram para dois cargos sem elevar permissões ou perder dados');

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const base = process.env.SIMULATION_URL || 'http://127.0.0.1:4173';
 const email = process.env.TEST_USER_EMAIL || 'teste@geocoleta.com.br';
 const password = process.env.TEST_USER_PASSWORD;
-const permissionLabel = process.env.TEST_PERMISSION_LABEL || 'Usuário da prefeitura';
+const permissionLabel = process.env.TEST_PERMISSION_LABEL || 'Coletor';
 if (!password) throw new Error('Informe TEST_USER_PASSWORD para executar o teste de integração.');
 
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', args: ['--no-sandbox'] });
