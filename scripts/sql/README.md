@@ -40,22 +40,6 @@ Nenhuma senha é incluída nos scripts. O projeto usa um perfil e um projeto por
 O administrador também fica limitado ao projeto do seu perfil. O cliente não pode alterar a própria permissão. Altere perfis somente pela administração do banco, com autorização.
 Se não houver necessidade de cadastro público, desative novos cadastros nas configurações do Auth e mantenha a criação de contas administrativa.
 
-## Atualizar um banco existente
-
-Use [simplificar-permissoes.sql](simplificar-permissoes.sql), **não** `schema.sql`, para converter uma base já configurada:
-
-1. Faça backup do banco e publique o frontend novo, que entende `ADMIN`/`COLETOR` e converte os nomes antigos ao carregar o perfil.
-2. Recarregue a aplicação nos dispositivos. Não execute a conversão enquanto depender do frontend antigo: ele não reconhece os novos nomes e esconderia Validação.
-3. No SQL Editor, execute `simplificar-permissoes.sql` completo, como administrador.
-4. Confira as permissões em `perfis` e entre novamente com coletor e administrador para validar o fluxo.
-
-A conversão é transacional: os três perfis antes autorizados a revisar passam a `ADMIN`; os dois perfis de coleta passam a `COLETOR`. IDs, contas, projetos, lotes e coletas são preservados. Atualiza também a constraint, três políticas RLS e três funções, sem ampliar o acesso entre projetos ou permitir edição de perfis pelo cliente.
-O script rejeita permissões desconhecidas e pode ser repetido sem reconverter contas já atualizadas.
-
-Os nomes antigos permanecem somente nos caminhos de conversão/compatibilidade e nos testes correspondentes; não são cargos aceitos no novo schema. `src/permissions.js` é utilizado ao carregar perfis remotos e restaurar sessões locais, sem apagar o IndexedDB. O banco continua sendo a autoridade para autorizar operações remotas.
-
-O seed de 12 lotes é exclusivo de uma **nova base de demonstração**. Não o execute na base existente de 240 lotes para esta conversão.
-
 ## O que a carga contém
 
 - Projeto `Projeto Centro - Demonstracao`, categoria `reurb`, cidade fictícia.
@@ -66,7 +50,7 @@ O seed de 12 lotes é exclusivo de uma **nova base de demonstração**. Não o e
 
 Os 240 lotes autorizados do site publicado **não são exportados nem substituídos** por estes arquivos.
 
-**Limite da interface atual:** `src/storage.js` ainda inicializa o lote `012` como um exemplo local validado e fornece um formulário fictício para consulta. Com os IDs originais, ele pode aparecer como Validado no navegador, embora o seed não crie validação no Supabase. Para testar coleta e sincronização, use os lotes `001` a `011`. A conversão de cargos não altera essa fixture.
+**Limite da interface atual:** `src/storage.js` ainda inicializa o lote `012` como um exemplo local validado e fornece um formulário fictício para consulta. Com os IDs originais, ele pode aparecer como Validado no navegador, embora o seed não crie validação no Supabase. Para testar coleta e sincronização, use os lotes `001` a `011`.
 
 ## Verificar a instalação
 
@@ -86,9 +70,10 @@ O teste SQL não substitui a verificação do Supabase Auth e da API. Depois:
 
 Os testes de integração real (`test:supabase` e `test:sync`) incluem expectativas da demonstração publicada com 240 lotes e contas específicas. Não os trate como validação automática desta nova base de 12 lotes sem adaptar os fixtures.
 
-## Arquivos antigos e limites
+## Arquivos complementares e limites
 
-- [reabrir-coleta-validada.sql](reabrir-coleta-validada.sql): ajuste de reabertura que agora usa `ADMIN`. Em uma base com cargos antigos, execute primeiro `simplificar-permissoes.sql`. O novo `schema.sql` incorpora essa regra; **não é um passo extra** da instalação.
+- [simplificar-permissoes.sql](simplificar-permissoes.sql): registro técnico da simplificação dos cargos durante o desenvolvimento. **Não faz parte da instalação atual.**
+- [reabrir-coleta-validada.sql](reabrir-coleta-validada.sql): definição isolada da regra de reabertura por `ADMIN`. O `schema.sql` já incorpora essa regra; **não é um passo extra** da instalação.
 - [testar-reabertura-coleta.sql](testar-reabertura-coleta.sql): teste adicional que exige uma coleta finalizada ou validada de coletor comum; também reverte suas alterações.
 
 O schema é uma fotografia do modelo atual, não um backup, um conjunto de migrações incrementais ou um instalador do Supabase.
